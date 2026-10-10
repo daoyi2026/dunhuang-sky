@@ -183,7 +183,8 @@ h3{font-weight:500;font-size:22px;letter-spacing:.1em;margin:0}
 
 /* ── 紫微 ── */
 .night{background:var(--night);color:var(--silk);position:relative}
-.polar{padding-block:clamp(90px,11vw,160px)}
+.polar{padding-block:clamp(90px,11vw,160px);min-height:100vh;min-height:100svh;display:flex;flex-direction:column;justify-content:center}
+.polar > .wrap{width:100%}
 .polar-grid{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:clamp(32px,5vw,80px);align-items:center;margin-top:36px}
 .polar-wrap{position:relative;aspect-ratio:1;max-width:100%;width:100%;cursor:grab;touch-action:pan-y}
 .polar-wrap:active{cursor:grabbing}
@@ -804,7 +805,7 @@ function heroBuild(){
   const vig=ctx0.createRadialGradient(W*.55,H*.45,Math.min(W,H)*.3,W*.55,H*.45,Math.hypot(W,H)*.62);vig.addColorStop(0,'rgba(2,5,18,0)');vig.addColorStop(1,'rgba(2,5,18,.72)');
   const S6=W<760?5:6, mw=mk(Math.ceil(W/S6),Math.ceil(H/S6));
   buildFig();
-  HG.forEach(g=>g.place=null);
+  HG.forEach(g=>{g.place=null;g.off=null;g.nb=null});
   const hr=heroEl.getBoundingClientRect();
   const ui=[...heroEl.querySelectorAll('.hero-title,.hero-quote,.seal-wrap,.hero-side')].map(el=>{const q=el.getBoundingClientRect();return[q.left-hr.left-8,q.top-hr.top-8,q.right-hr.left+8,q.bottom-hr.top+8]});
   const keep=HS?HS.t0:performance.now();
@@ -835,9 +836,24 @@ function renderMilky(){
 const darkDot=(c,x,y,r,fam,a)=>{c.globalAlpha=a;c.beginPath();c.arc(x,y,r,0,7);
   if(fam==='石'){c.fillStyle='#e2583b';c.fill()}else if(fam==='甘'){c.fillStyle='#0a1430';c.fill();c.lineWidth=1.1;c.strokeStyle='rgba(240,228,196,.92)';c.stroke()}else{c.fillStyle='#e0ad45';c.fill()}};
 
+/* 题记预先排成小图，避免每帧重新排字 */
+const NB_LAB='"Ma Shan Zheng","Kaiti SC","STKaiti",serif';
+function noteBlock(g,nameFS,noteFS,showNotes){
+  const key=nameFS+'|'+noteFS+'|'+showNotes;
+  if(g.nb&&g.nb.key===key)return g.nb;
+  const phr=showNotes?g.phr:[], cw0=nameFS*1.25, cw=noteFS*1.4, d=Math.min(2,DPR);
+  const nw=cw0, w=cw0+phr.length*cw, h=Math.max(g.name.length*nameFS*1.06,...phr.map(p=>p.length*noteFS*1.1))+4;
+  const col=(c,fs,color,x,txt,y0,lh)=>{c.font=`${fs}px ${NB_LAB}`;c.fillStyle=color;c.textAlign='center';c.textBaseline='top';[...txt].forEach((ch,k)=>c.fillText(ch,x,y0+k*lh))};
+  const name=mk(nw*d,h*d),nc=name.getContext('2d');nc.scale(d,d);col(nc,nameFS,'rgba(240,226,190,.95)',nw/2,g.name,0,nameFS*1.06);
+  const gold=mk(nw*d,h*d),gc=gold.getContext('2d');gc.scale(d,d);col(gc,nameFS,'#f2d48e',nw/2,g.name,0,nameFS*1.06);
+  const notes=mk(Math.max(1,(w-nw))*d,h*d),tc=notes.getContext('2d');tc.scale(d,d);
+  let x=w-nw-cw/2;phr.forEach(p=>{col(tc,noteFS,'rgba(234,222,194,1)',x,p,3,noteFS*1.1);x-=cw});
+  return g.nb={key,w,h,nw,name,gold,notes};
+}
 function heroFrame(t){
   const S=HS;if(!S)return;
   const [ctx,W,H]=fit(hC);
+  if(Math.abs(W-S.W)>1||Math.abs(H-S.H)>1){heroBuild();return}
   const it=RM?1e9:t-S.t0, dt=Math.min(.05,(t-(lastT||t))/1000);lastT=t;
   par.x+=(par.tx-par.x)*.035;par.y+=(par.ty-par.y)*.035;
 
@@ -932,59 +948,61 @@ function heroFrame(t){
     ctx.globalAlpha=1;
   }
 
-  /* 星官：灯下逐笔画出，并在旁边题写书法说明 */
+  /* 星官：灯下逐笔画出，并在旁边题写书法说明。按真实时间推进，帧率高低都一样顺 */
   const placed=[[lamp.x-70,lamp.y+26,lamp.x+70,lamp.y+50]];
   if(!S.exploring&&S.ui)S.ui.forEach(r=>placed.push(r));
-  const nameFS=W<760?18:24, noteFS=W<760?13:16, lab='"Ma Shan Zheng","Kaiti SC","STKaiti",serif';
-  const live=[];
+  const nameFS=W<760?18:24, noteFS=W<760?13:16;
+  const live=[], kLit=1-Math.exp(-dt*6);
   HG.forEach(g=>{
     let md=1e9,any=false,x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
     g.idx.forEach(i=>{if(!PV[i])return;any=true;const x=PX[i],y=PY[i];if(x<x0)x0=x;if(x>x1)x1=x;if(y<y0)y0=y;if(y>y1)y1=y;if(R>2){const dd=Math.hypot(x-lamp.x,y-cy);if(dd<md)md=dd}});
-    const near=any&&md<R*.85;if(near)g.hold=t;
+    const near=any&&(g.was?md<R*1.0:md<R*.8);if(near)g.hold=t;
     if(near&&!g.was&&g.p<.6)SND.star(g.name);g.was=near;
-    const tgt=near||t-g.hold<6000?1:0;
-    g.p=RM?tgt:g.p+(tgt-g.p)*(tgt?.03:.012);g.lit+=((near?1:0)-g.lit)*.06;
-    if(!any||g.p<.01){if(g.p<.01)g.place=null;return}
+    const on=near||t-g.hold<4500;
+    g.p=RM?(on?1:0):Math.max(0,Math.min(1,g.p+(on?dt/1.1:-dt/.9)));
+    g.lit+=((near?1:0)-g.lit)*kLit;
+    if(!any||g.p<=0){if(g.p<=0){g.place=null;g.off=null}return}
     const minD=W<760?30:40, diag=Math.hypot(x1-x0,y1-y0), mx=(x0+x1)/2, my=(y0+y1)/2;
     const sc=g.idx.length>1&&diag<minD?Math.min(3,minD/Math.max(diag,4)):1;
     g.sx=g.idx.map(i=>mx+(PX[i]-mx)*sc);g.sy=g.idx.map(i=>my+(PY[i]-my)*sc);
     g.bb=[mx+(x0-mx)*sc,my+(y0-my)*sc,mx+(x1-mx)*sc,my+(y1-my)*sc];live.push(g);
   });
-  live.sort((a,b)=>b.lit-a.lit||b.p-a.p);
   ctx.lineCap='round';
   live.forEach(g=>{
     const fa=famA(g.fam),a=Math.min(1,g.p*1.4)*(.6+.4*g.lit);
     ctx.lineWidth=1.3;ctx.strokeStyle='rgba(240,226,190,.85)';
-    const pos=new Map();g.idx.forEach((i,j)=>pos.set(i,j));
+    const pos=g.pos||(g.pos=new Map(g.idx.map((i,j)=>[i,j])));
     g.segs.forEach(([ia,ib],i)=>{if(!PV[ia]||!PV[ib])return;const q=ease(g.p*1.7-i*.13);if(q<=0)return;const A=pos.get(ia),B=pos.get(ib);
       const ax=g.sx[A],ay=g.sy[A],bx=g.sx[B],by=g.sy[B];ctx.globalAlpha=fa*a;ctx.beginPath();ctx.moveTo(ax,ay);ctx.lineTo(ax+(bx-ax)*q,ay+(by-ay)*q);ctx.stroke()});
     g.idx.forEach((i,j)=>{if(!PV[i])return;const q=ease(g.p*2.4-j*.07);if(q<=0)return;const m=STARS[i].m,r=(m<1.5?3.6:2.9)*(.6+.4*q),x=g.sx[j],y=g.sy[j];
       if(g.lit>.05){ctx.globalAlpha=fa*q*g.lit*.45;const gg=ctx.createRadialGradient(x,y,0,x,y,r*3.4);gg.addColorStop(0,g.fam==='石'?'rgba(226,88,59,.6)':'rgba(240,226,190,.4)');gg.addColorStop(1,'rgba(0,0,0,0)');ctx.fillStyle=gg;ctx.beginPath();ctx.arc(x,y,r*3.4,0,7);ctx.fill()}
       darkDot(ctx,x,y,r,g.fam,fa*q*a)});
   });
-  /* 题记排版：竖写，右起；先放名称，再放说明；避开星线和其他题记 */
-  const pad=W<760?10:16;
-  live.forEach(g=>{
+  /* 题记排版：竖写，右起。位置一旦选定就跟着星官走，只有出了画面才换边，换边时平滑滑过去 */
+  const pad=W<760?10:16, kOff=1-Math.exp(-dt*8);
+  const order=live.filter(g=>g.place!=null).concat(live.filter(g=>g.place==null));
+  order.forEach(g=>{
     const la=ease((g.p-.45)*2.2);if(la<=0)return;
-    const phr=W<760&&g.lit<.3?[]:g.phr;
-    const cols=[g.name,...phr], cw0=nameFS*1.25, cw=noteFS*1.4;
-    const bw=cw0+(cols.length-1)*cw, bh=Math.max(g.name.length*nameFS*1.06,...phr.map(p=>p.length*noteFS*1.1))+4;
+    const showNotes=!(W<760&&g.lit<.3)&&g.phr.length>0;
+    const blk=noteBlock(g,nameFS,noteFS,showNotes);
+    const bw=blk.w,bh=blk.h;
     const [x0,y0,x1,y1]=g.bb, mx=(x0+x1)/2, my=(y0+y1)/2;
     const cand=[[x1+pad,my-bh*.42],[x0-pad-bw,my-bh*.42],[x1+pad,y0-bh*.15],[x0-pad-bw,y1-bh*.85],[mx-bw/2,y1+pad],[mx-bw/2,y0-pad-bh]];
     const hit=(rx,ry)=>{if(rx<6||ry<70||rx+bw>W-6||ry+bh>H-10)return 2;
       for(const p of placed)if(rx<p[2]&&rx+bw>p[0]&&ry<p[3]&&ry+bh>p[1])return 1;
       for(const o of live){if(o===g)continue;const b=o.bb;if(rx<b[2]+8&&rx+bw>b[0]-8&&ry<b[3]+8&&ry+bh>b[1]-8)return 1}return 0};
     let ci=g.place;
-    if(ci==null||hit(cand[ci][0],cand[ci][1])){ci=null;for(let k=0;k<cand.length;k++){if(!hit(cand[k][0],cand[k][1])){ci=k;break}}
-      if(ci==null){for(let k=0;k<cand.length;k++)if(hit(cand[k][0],cand[k][1])!==2){ci=k;break}}if(ci==null)ci=0;g.place=ci}
-    const [bx,by]=cand[ci];placed.push([bx,by,bx+bw,by+bh]);
-    const fa=famA(g.fam);ctx.textAlign='center';ctx.textBaseline='top';
-    let cx=bx+bw-cw0/2;
-    ctx.globalAlpha=la*fa;ctx.fillStyle=g.lit>.5?'#f2d48e':'rgba(240,226,190,.95)';ctx.font=`${nameFS}px ${lab}`;
-    [...g.name].forEach((ch,k)=>ctx.fillText(ch,cx,by+k*nameFS*1.06));
-    cx-=cw0/2+cw/2;ctx.font=`${noteFS}px ${lab}`;
-    phr.forEach((ph,pi)=>{const pa=ease((g.p-.55-pi*.08)*2.6);if(pa<=0){cx-=cw;return}
-      ctx.globalAlpha=pa*fa*.86;ctx.fillStyle='rgba(234,222,194,1)';[...ph].forEach((ch,k)=>ctx.fillText(ch,cx,by+3+k*noteFS*1.1));cx-=cw});
+    if(ci==null||hit(cand[ci][0],cand[ci][1])===2){
+      let best=null;for(let k=0;k<cand.length;k++){if(!hit(cand[k][0],cand[k][1])){best=k;break}}
+      if(best==null){for(let k=0;k<cand.length;k++)if(hit(cand[k][0],cand[k][1])!==2){best=k;break}}if(best==null)best=0;
+      if(ci!=null&&best!==ci){const o=g.off||[0,0];g.off=[cand[ci][0]+o[0]-cand[best][0],cand[ci][1]+o[1]-cand[best][1]]}
+      ci=best;g.place=ci}
+    if(!g.off)g.off=[0,0];g.off[0]*=1-kOff;g.off[1]*=1-kOff;
+    const bx=cand[ci][0]+g.off[0],by=cand[ci][1]+g.off[1];placed.push([bx,by,bx+bw,by+bh]);
+    const fa=famA(g.fam);
+    ctx.globalAlpha=la*fa;ctx.drawImage(blk.name,bx+bw-blk.nw,by,blk.nw,blk.h);
+    if(g.lit>.02){ctx.globalAlpha=la*fa*g.lit;ctx.drawImage(blk.gold,bx+bw-blk.nw,by,blk.nw,blk.h)}
+    if(showNotes){const pa=ease((g.p-.6)*2.6);if(pa>0){ctx.globalAlpha=pa*fa*.86;ctx.drawImage(blk.notes,bx,by,bw-blk.nw,blk.h)}}
   });
   ctx.globalAlpha=1;ctx.textAlign='left';ctx.textBaseline='alphabetic';
 
@@ -1009,7 +1027,7 @@ function heroFrame(t){
 
   /* 灯位 */
   if(!RM&&t-lamp.last>5000&&!lamp.down){const a=(t-S.t0)*.00016;lamp.tx=W*(W<760?.5+.24*Math.sin(a*1.3):.56+.14*Math.sin(a*1.3));lamp.ty=H*(.42+.13*Math.sin(a*2.1+1))}
-  lamp.x+=(lamp.tx-lamp.x)*.14;lamp.y+=(lamp.ty-lamp.y)*.14;lamp.r+=(lamp.tr-lamp.r)*.08;
+  {const kl=1-Math.exp(-dt*9),kr=1-Math.exp(-dt*5);lamp.x+=(lamp.tx-lamp.x)*kl;lamp.y+=(lamp.ty-lamp.y)*kl;lamp.r+=(lamp.tr-lamp.r)*kr}
   heroEl.style.setProperty('--lx',lamp.x+'px');heroEl.style.setProperty('--ly',lamp.y+'px');heroEl.style.setProperty('--lr',lamp.r+'px');
   /* 读数 */
   {const v=unproj(lamp.x-par.x*24,lamp.y-par.y*14);const [ra,dec]=radec(v);
