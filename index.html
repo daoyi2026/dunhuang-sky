@@ -50,9 +50,16 @@ body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:90;bac
 /* ── hero ── */
 .hero{position:relative;height:min(100svh,940px);min-height:620px;overflow:hidden;background:#03071a;cursor:none;touch-action:pan-y;user-select:none;-webkit-user-select:none}
 #heroCanvas{position:absolute;inset:0;width:100%;height:100%;display:block}
-.lamp-read{position:absolute;left:0;top:0;pointer-events:none;z-index:4;transform:translate(calc(var(--lx,50%) + var(--lr,180px)*0.8),calc(var(--ly,50%) + var(--lr,180px)*0.55));
+.lamp-read{position:absolute;left:0;top:0;pointer-events:none;z-index:4;text-align:center;transform:translate(calc(var(--lx,50%) - 50%),calc(var(--ly,50%) + 30px));
   font-family:var(--f-mono);font-size:10.5px;letter-spacing:.12em;color:rgba(233,220,188,.75);white-space:nowrap;line-height:1.6;transition:opacity .6s}
-.lamp-read b{font-family:var(--f-brush);font-weight:400;font-size:20px;letter-spacing:0;color:var(--ochre);display:block}
+.lamp-read b{display:none}
+.hero-ui{transition:opacity .7s ease}
+.hero.exploring .hero-ui{opacity:.06}
+.home-btn{position:absolute;z-index:6;left:50%;bottom:calc(22px + env(safe-area-inset-bottom,0px));transform:translate(-50%,12px);opacity:0;pointer-events:none;
+  font:inherit;font-size:13px;letter-spacing:.3em;color:var(--silk);background:rgba(10,20,48,.55);border:1px solid rgba(233,220,188,.35);border-radius:999px;
+  padding:8px 16px 8px 20px;cursor:pointer;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);transition:opacity .5s,transform .5s,border-color .3s}
+.home-btn.on{opacity:1;transform:translate(-50%,0);pointer-events:auto}
+.home-btn:hover{border-color:var(--ochre)}
 .hero-ui{position:absolute;inset:0;z-index:5;pointer-events:none;display:grid;grid-template-columns:auto auto 1fr minmax(0,400px);gap:clamp(14px,2.4vw,40px);
   padding:calc(84px + env(safe-area-inset-top,0px)) var(--gutter) clamp(28px,4vh,48px)}
 .hero-title{display:flex;flex-direction:column;font-weight:900;font-size:clamp(76px,min(13vw,19vh),184px);line-height:.94;letter-spacing:.06em;margin:0;color:var(--silk);
@@ -241,6 +248,7 @@ h3{font-weight:500;font-size:22px;letter-spacing:.1em;margin:0}
 
 <header class="hero" id="top">
   <canvas id="heroCanvas" aria-hidden="true"></canvas>
+  <button type="button" class="home-btn" id="homeBtn" aria-label="转回初始天区：织女与河鼓">归位</button>
   <div class="lamp-read" aria-hidden="true"><b id="lampName">参</b><span id="lampCoord">赤经 05h32m · 赤纬 +07°</span></div>
   <div class="hero-ui">
     <h1 class="hero-title" aria-label="敦煌星图"><span>敦</span><span>煌</span><span>星</span><span>图</span></h1>
@@ -270,7 +278,7 @@ h3{font-weight:500;font-size:22px;letter-spacing:.1em;margin:0}
     <div class="hero-side">
       <p>一卷出自敦煌莫高窟藏经洞的唐代写本，画下了肉眼可见的整片天空。它承载着中国古代的星官体系，是世界现存最古老、星数最多的全天星图之一。</p>
       <div class="hero-meta mono"><span>唐 · 约公元 649–684</span><span>1339 星</span><span>257 星官</span></div>
-      <div class="hint mono"><i></i>掌灯照见写本；移向边缘或拖动，转动星空</div>
+      <div class="hint mono"><i></i>掌灯照见写本；移向边缘或拖动，转动星空；双击归位</div>
     </div>
   </div>
 </header>
@@ -628,7 +636,8 @@ const NOTES={
  天狼:'狼一星，为野将，主侵掠',大角:'大角一星，天王座也',天钩:'天钩九星，在天河中，状如钩',少卫:'少卫，紫宫藩卫之星'
 };
 
-const view={ra:5.15,dec:14,vra:0,vdec:0,f:600,cx:0,cy:0,C:[0,0,0],E:[0,0,0],N:[0,0,0]};
+const HOME={ra:19.75,dec:21};
+const view={ra:19.75,dec:21,homing:null,vra:0,vdec:0,f:600,cx:0,cy:0,C:[0,0,0],E:[0,0,0],N:[0,0,0]};
 let HS=null, heroVisible=true, lastT=0;
 const par={x:0,y:0,tx:0,ty:0};
 const lamp={x:0,y:0,tx:0,ty:0,r:180,tr:180,user:false,inside:false,shown:0,last:-1e9,down:false,drag:false,px:0,py:0};
@@ -647,11 +656,11 @@ function buildGT(){
   for(let j=0;j<h;j++){const b=40-j*80/(h-1),br=b*D2R,cb=Math.cos(br),sb=Math.sin(br);
     for(let i=0;i<w;i++){const l=i/w*360,lr=l*D2R,gx=cb*Math.cos(lr),gy=cb*Math.sin(lr),gz=sb;
       const n=fbm3(gx*2.4+3,gy*2.4,gz*2.4,5),n2=fbm3(gx*7+5,gy*7,gz*7,4),lane=fbm3(gx*3.6+9,gy*3.6,gz*3.6,4);
-      const dark=ease((lane-.42)/.2),dl=((l+180)%360)-180;
+      const dark=ease((lane-.4)/.17),dl=((l+180)%360)-180,warm=Math.exp(-(dl*dl)/(2*40*40));
       const bulge=1+1.2*Math.exp(-(dl*dl)/(2*30*30))*Math.exp(-(b*b)/(2*10*10));
-      let I=(Math.exp(-(b*b)/(2*8.5*8.5))*(.1+2.2*n*n*n)*(1-.85*dark)+Math.exp(-(b*b)/(2*3.2*3.2))*.35*n2*(1-.8*dark))*bulge+.02*n;
+      let I=(Math.exp(-(b*b)/(2*8.5*8.5))*(.12+2.9*n*n*n)*(1-.92*dark)+Math.exp(-(b*b)/(2*3.2*3.2))*.35*n2*(1-.88*dark))*bulge+.02*n;
       I=Math.min(1,I);const g=n2-.5,p=(j*w+i)*4;
-      img[p]=38+I*120+Math.max(0,g)*I*110;img[p+1]=74+I*140+g*I*60;img[p+2]=142+I*105;img[p+3]=I*215;
+      img[p]=38+I*(120+warm*70)+Math.max(0,g)*I*90;img[p+1]=74+I*(140+warm*25)+g*I*50;img[p+2]=142+I*(105-warm*55);img[p+3]=I*215;
     }}
   GT={w,h,img};
 }
@@ -666,6 +675,18 @@ function buildDust(){
     const sz=.4+Math.pow(r(),6)*1.2, a=Math.floor(r()*4), t=r(), col=t<.72?0:(t<.88?1:2);
     out.push({x:v[0],y:v[1],z:v[2],s:sz,b:a*3+col});
   }
+  /* 银河微星：按银河亮度取样，暗尘带里自然稀疏 */
+  s=3326;const G=GT;let tries=0;
+  while(out.length<110000&&tries<2.4e6){tries++;
+    const l=r()*360,b=(r()*2-1)*36;if(r()>Math.cos(b*D2R))continue;
+    const q=((((40-b)*(G.h-1)/80)|0)*G.w+((l/360*G.w)|0))*4,I=G.img[q+3]/215;
+    if(r()>Math.pow(I,1.05))continue;
+    const lr=l*D2R,br=b*D2R,gx=Math.cos(br)*Math.cos(lr),gy=Math.cos(br)*Math.sin(lr),gz=Math.sin(br);
+    const vx=GAL[0][0]*gx+GAL[1][0]*gy+GAL[2][0]*gz,vy=GAL[0][1]*gx+GAL[1][1]*gy+GAL[2][1]*gz,vz=GAL[0][2]*gx+GAL[1][2]*gy+GAL[2][2]*gz;
+    const dl=((l+180)%360)-180,warm=Math.exp(-(dl*dl)/(2*42*42)),t=r(),col=t<warm*.7?1:(t<.86?0:2);
+    const a=Math.min(3,Math.floor(r()*2+I*2.4));
+    out.push({x:vx,y:vy,z:vz,s:.42+Math.pow(r(),5)*.75,b:a*3+col});
+  }
   DUST=out;
 }
 const DUST_FS=[];[.22,.38,.56,.78].forEach(a=>['220,228,255','255,226,190','190,215,255'].forEach(c=>DUST_FS.push(`rgba(${c},${a})`)));
@@ -679,26 +700,48 @@ const DECO_LINES=LINES.filter(([a])=>!STARS[a].named);
 const NAMED_LINES=LINES.filter(([a])=>STARS[a].named);
 const TW=STARS.map((s,i)=>[((i*7919)%628)/100,.6+((i*104729)%110)/100]);
 
-/* 长信宫灯 */
+/* 长信宫灯：西汉鎏金铜灯，宫女跪坐执灯，右袖覆于灯上为烟道 */
 let FIG=null;
 function buildFig(){
-  const k=W_isSmall()?1.05:1.3, d=DPR, Wf=52, Hf=58, ox=13, oy=35;
+  const k=W_isSmall()?.74:.9, d=DPR*2, Wf=52, Hf=58, ox=13, oy=35;
   const c=mk(Wf*k*d,Hf*k*d), x=c.getContext('2d');x.scale(k*d,k*d);x.translate(ox,oy);
-  const gold=x.createLinearGradient(-10,-33,34,20);gold.addColorStop(0,'#f8dd94');gold.addColorStop(.42,'#cf9c45');gold.addColorStop(1,'#6a461a');
-  x.lineJoin='round';x.lineCap='round';x.strokeStyle='rgba(36,20,6,.8)';x.lineWidth=.8;
-  const F=()=>{x.fillStyle=gold;x.fill();x.stroke()};
-  x.beginPath();x.moveTo(18,-18);x.bezierCurveTo(14,-8,11,4,9,12);x.quadraticCurveTo(4,14,4,18.5);x.lineTo(35,19);x.bezierCurveTo(36,6,33,-8,30,-18);x.quadraticCurveTo(24,-21,18,-18);x.closePath();F();
-  x.save();x.strokeStyle='rgba(70,42,12,.6)';x.beginPath();x.moveTo(22,-12);x.quadraticCurveTo(20,2,16,17);x.moveTo(27,-10);x.quadraticCurveTo(28.5,4,27.5,18);x.moveTo(9,14);x.quadraticCurveTo(16,12,22,15);x.stroke();x.restore();
-  x.beginPath();x.arc(24,-24.5,5,0,7);F();
-  x.beginPath();x.ellipse(27,-30,3.3,2.4,-.5,0,7);F();
-  x.beginPath();x.moveTo(17,-4);x.quadraticCurveTo(10,8,2,10.5);x.lineTo(2,14);x.quadraticCurveTo(12,12.5,20.5,0);x.closePath();F();
-  x.beginPath();x.rect(-1.8,7,3.6,7);F();
-  x.beginPath();x.ellipse(0,14.5,6.5,1.9,0,0,7);F();
-  x.beginPath();x.ellipse(0,7.6,11,2.6,0,0,7);F();
-  x.beginPath();x.moveTo(-9.5,-7);x.quadraticCurveTo(-11.8,0,-9.5,7);x.lineTo(-4.4,7);x.lineTo(-4.4,-7);x.closePath();F();
-  x.beginPath();x.moveTo(9.5,-7);x.quadraticCurveTo(11.8,0,9.5,7);x.lineTo(4.4,7);x.lineTo(4.4,-7);x.closePath();F();
-  x.beginPath();x.ellipse(0,-7.6,10,2.4,0,0,7);F();
-  x.beginPath();x.moveTo(-5,-8.6);x.bezierCurveTo(-5.5,-20,4,-27.5,13,-24.5);x.quadraticCurveTo(18,-22.5,20.5,-17);x.lineTo(15,-14);x.quadraticCurveTo(10,-18.5,6,-15);x.quadraticCurveTo(3.6,-11.5,5,-8.6);x.closePath();F();
+  const G=(x0,y0,x1,y1,stops)=>{const g=x.createLinearGradient(x0,y0,x1,y1);stops.forEach(([o,cl])=>g.addColorStop(o,cl));return g};
+  const bodyG=G(6,-20,36,18,[[0,'#fbe3a0'],[.35,'#d9a64c'],[.7,'#a87a30'],[1,'#5f3f15']]);
+  const sleeveG=G(-6,-28,20,-10,[[0,'#fff0bf'],[.4,'#e2b259'],[1,'#8c6324']]);
+  const lampG=G(-12,-8,12,8,[[0,'#f6d68a'],[.5,'#c48f3c'],[1,'#7a5420']]);
+  x.lineJoin='round';x.lineCap='round';
+  const F=(fill,st=.7)=>{x.fillStyle=fill;x.fill();x.strokeStyle='rgba(40,22,6,.85)';x.lineWidth=st;x.stroke()};
+  const HL=(w=.55,a=.75)=>{x.strokeStyle=`rgba(255,244,205,${a})`;x.lineWidth=w;x.stroke()};
+  const SH=(w=.5,a=.55)=>{x.strokeStyle=`rgba(70,40,10,${a})`;x.lineWidth=w;x.stroke()};
+  /* 跪坐的身体与衣裾 */
+  x.beginPath();x.moveTo(18,-18);x.bezierCurveTo(14.5,-8,11.5,3,9.5,11);x.quadraticCurveTo(4.5,13,4.2,18.6);x.lineTo(35,19);x.bezierCurveTo(36.2,6,33.2,-8,30,-18);x.quadraticCurveTo(24,-21.2,18,-18);x.closePath();F(bodyG);
+  x.beginPath();x.moveTo(17.6,-16);x.bezierCurveTo(14.4,-7,11.8,3,10,11);HL(.6,.7);
+  x.beginPath();x.moveTo(21.5,-13);x.quadraticCurveTo(19.8,1,16.5,17.6);x.moveTo(25.5,-12);x.quadraticCurveTo(25.8,3,24.2,18.2);x.moveTo(29.6,-10);x.quadraticCurveTo(31.6,4,31.4,18.4);SH(.5,.5);
+  x.beginPath();x.moveTo(9.2,14.6);x.quadraticCurveTo(16,12.2,22.5,15.2);x.quadraticCurveTo(28,17.4,34.6,16.2);SH(.55,.5);
+  x.beginPath();x.moveTo(19.5,-12.5);x.quadraticCurveTo(24.5,-11.2,30.2,-12.6);SH(.7,.6);
+  /* 头、面、发髻 */
+  x.beginPath();x.ellipse(24,-24.6,4.6,5.1,0,0,7);F(G(19,-30,29,-19,[[0,'#fbe6a8'],[1,'#b58237']]));
+  x.beginPath();x.moveTo(19.5,-25.5);x.quadraticCurveTo(19,-23.2,20.4,-21.6);HL(.5,.8);
+  x.beginPath();x.moveTo(20.2,-27.5);x.quadraticCurveTo(24.5,-31.2,28.6,-26.5);x.quadraticCurveTo(28.8,-23.5,27.4,-21);x.lineTo(28.8,-25);x.quadraticCurveTo(26,-29,21,-27);x.closePath();F('#6a4718',.4);
+  x.beginPath();x.ellipse(27.6,-30.2,3,2.2,-.55,0,7);F(G(25,-33,30,-28,[[0,'#d8a64e'],[1,'#6a4718']]),.5);
+  /* 托灯的左臂 */
+  x.beginPath();x.moveTo(17.2,-4);x.quadraticCurveTo(10.5,7.5,2.2,10.4);x.lineTo(2.2,13.6);x.quadraticCurveTo(12.5,12.4,20.6,.2);x.closePath();F(bodyG);
+  x.beginPath();x.moveTo(16.6,-2.5);x.quadraticCurveTo(10.5,7.6,3,10.6);HL(.45,.6);
+  /* 灯座、灯盘 */
+  x.beginPath();x.rect(-1.6,7.4,3.2,6.6);F(lampG,.5);
+  x.beginPath();x.ellipse(0,14.6,6.4,1.8,0,0,7);F(lampG,.55);
+  x.beginPath();x.ellipse(0,7.7,11,2.5,0,0,7);F(lampG,.6);
+  x.beginPath();x.ellipse(0,7.2,10.2,1.8,0,Math.PI,2*Math.PI);HL(.5,.75);
+  /* 灯罩：两片弧形屏板，中间留出窗口 */
+  const panel=s=>{x.beginPath();x.moveTo(9.4*s,-7);x.quadraticCurveTo(11.6*s,0,9.4*s,7);x.lineTo(4.4*s,7);x.lineTo(4.4*s,-7);x.closePath();F(lampG,.6);
+    x.beginPath();x.moveTo(6.9*s,-6.4);x.lineTo(6.9*s,6.4);SH(.4,.45);x.beginPath();x.moveTo(4.9*s,-6.4);x.lineTo(4.9*s,6.4);HL(.4,.55)};
+  panel(-1);panel(1);
+  x.beginPath();x.ellipse(0,-7.6,10,2.3,0,0,7);F(lampG,.6);
+  x.beginPath();x.ellipse(0,-8,8.6,1.3,0,Math.PI,2*Math.PI);HL(.45,.7);
+  /* 抬起的右袖，覆在灯顶 */
+  x.beginPath();x.moveTo(-5,-8.6);x.bezierCurveTo(-5.6,-20,4,-27.6,13,-24.6);x.quadraticCurveTo(18,-22.6,20.6,-17);x.lineTo(15,-14);x.quadraticCurveTo(10,-18.6,6,-15);x.quadraticCurveTo(3.6,-11.6,5,-8.6);x.closePath();F(sleeveG);
+  x.beginPath();x.moveTo(-4.2,-10);x.bezierCurveTo(-4.4,-19.6,4,-26,12.4,-23.6);HL(.55,.85);
+  x.beginPath();x.moveTo(1,-9);x.bezierCurveTo(0,-17,6,-21.5,13.5,-20.5);x.moveTo(4.5,-9.4);x.quadraticCurveTo(6,-15,12,-17.4);SH(.45,.5);
   FIG={c,ox:ox*k,oy:oy*k,w:Wf*k,h:Hf*k,k};
 }
 const W_isSmall=()=>innerWidth<760;
@@ -707,7 +750,7 @@ function heroBuild(){
   const r=heroEl.getBoundingClientRect();const W=r.width,H=r.height;if(W<2)return;
   if(!GT)buildGT();if(!DUST)buildDust();
   view.f=W<760?Math.max(W,H*.62)*.62:W*.6;
-  view.cx=W*(W<760?.5:.56);view.cy=H*.48;
+  view.cx=W*(W<760?.5:.56);view.cy=H*.46;
   const d=Math.min(DPR,1.5);
   const tile=mk(420,420),tx=tile.getContext('2d');paperTexture(tx,420,420,11);
   {let q=77;const rr=()=>((q=(q*16807)%2147483647)/2147483647);tx.strokeStyle='#5a4128';tx.lineWidth=.7;
@@ -728,8 +771,10 @@ function heroBuild(){
   const S6=W<760?5:6, mw=mk(Math.ceil(W/S6),Math.ceil(H/S6));
   buildFig();
   HG.forEach(g=>g.place=null);
+  const hr=heroEl.getBoundingClientRect();
+  const ui=[...heroEl.querySelectorAll('.hero-title,.hero-quote,.seal-wrap,.hero-side')].map(el=>{const q=el.getBoundingClientRect();return[q.left-hr.left-8,q.top-hr.top-8,q.right-hr.left+8,q.bottom-hr.top+8]});
   const keep=HS?HS.t0:performance.now();
-  HS={W,H,d,tile,pat:null,dunes,DW,DH,sky,glow,vig,mw,S6,mwLast:null,dc:mk(W*d,H*d),dLast:null,lc:mk(W*d,H*d),t0:keep,meteors:[],nextMeteor:keep+5200};
+  HS={ui,W,H,d,tile,pat:null,dunes,DW,DH,sky,glow,vig,mw,S6,mwLast:null,dc:mk(W*d,H*d),dLast:null,lc:mk(W*d,H*d),t0:keep,meteors:[],nextMeteor:keep+5200};
 }
 
 function renderMilky(){
@@ -772,14 +817,22 @@ function heroFrame(t){
     ex=Math.max(-1,Math.min(1,ex));ey=Math.max(-1,Math.min(1,ey));
     if(ex||ey){tvr=-ex*Math.abs(ex)*1.5/Math.max(.3,Math.cos(view.dec*D2R));tvd=-ey*Math.abs(ey)*24}
   }
-  if(!lamp.down){view.vra+=(tvr-view.vra)*.07;view.vdec+=(tvd-view.vdec)*.07;view.ra=((view.ra+view.vra*dt)%24+24)%24;view.dec=Math.max(-50,Math.min(84,view.dec+view.vdec*dt))}
+  if(view.homing){const h=view.homing,q=Math.min(1,(t-h.t0)/h.dur),e=q<.5?4*q*q*q:1-Math.pow(-2*q+2,3)/2;
+    view.ra=((h.ra0+h.dra*e)%24+24)%24;view.dec=h.dec0+(HOME.dec-h.dec0)*e;view.vra=view.vdec=0;if(q>=1)view.homing=null}
+  else if(!lamp.down){view.vra+=(tvr-view.vra)*.07;view.vdec+=(tvd-view.vdec)*.07;view.ra=((view.ra+view.vra*dt)%24+24)%24;view.dec=Math.max(-50,Math.min(84,view.dec+view.vdec*dt))}
   setBasis();
+  /* 转动时淡出标题与介绍；停下片刻再回来 */
+  if((lamp.down&&lamp.drag)||Math.abs(view.vra)>.06||Math.abs(view.vdec)>1.2||view.homing)S.lastMove=t;
+  const exploring=t-(S.lastMove||-1e9)<1600;
+  if(exploring!==S.exploring){S.exploring=exploring;heroEl.classList.toggle('exploring',exploring)}
+  const away=!view.homing&&angDist([view.ra,view.dec],[HOME.ra,HOME.dec])>4;
+  if(away!==S.away){S.away=away;homeBtn.classList.toggle('on',away)}
   const C=view.C,E=view.E,N=view.N,f=view.f;
 
   ctx.fillStyle=S.sky;ctx.fillRect(0,0,W,H);
   /* 银河 */
   renderMilky();
-  ctx.save();ctx.globalAlpha=ease(it/3800)*.95;ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';
+  ctx.save();ctx.globalAlpha=ease(it/3800)*.9;ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';
   ctx.drawImage(S.mw,par.x*6,par.y*4,S.mw.width*S.S6,S.mw.height*S.S6);ctx.restore();
   /* 暗星：视角变动超过一像素才重绘 */
   {const a0=ease((it-300)/2600),dc=S.dc,lk=S.dLast,cd=Math.cos(view.dec*D2R);
@@ -846,7 +899,9 @@ function heroFrame(t){
   }
 
   /* 星官：灯下逐笔画出，并在旁边题写书法说明 */
-  const placed=[], nameFS=W<760?18:24, noteFS=W<760?13:16, lab='"Ma Shan Zheng","Kaiti SC","STKaiti",serif';
+  const placed=[[lamp.x-70,lamp.y+26,lamp.x+70,lamp.y+50]];
+  if(!S.exploring&&S.ui)S.ui.forEach(r=>placed.push(r));
+  const nameFS=W<760?18:24, noteFS=W<760?13:16, lab='"Ma Shan Zheng","Kaiti SC","STKaiti",serif';
   const live=[];
   HG.forEach(g=>{
     let md=1e9,any=false,x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
@@ -933,6 +988,11 @@ heroEl.addEventListener('pointermove',e=>{const r=heroEl.getBoundingClientRect()
     view.ra=((view.ra+dx/view.f*(12/Math.PI)/Math.max(.3,Math.cos(view.dec*D2R)))%24+24)%24;view.dec=Math.max(-50,Math.min(84,view.dec+dy/view.f*(180/Math.PI)));
     view.vra=view.vdec=0}lamp.px=x;lamp.py=y}
   par.tx=x/r.width*2-1;par.ty=y/r.height*2-1});
+const homeBtn=document.getElementById('homeBtn');
+function goHome(){view.homing={t0:performance.now(),dur:1600,ra0:view.ra,dec0:view.dec,dra:wrapH(HOME.ra-view.ra)};HG.forEach(g=>g.place=null)}
+homeBtn.addEventListener('pointerdown',e=>e.stopPropagation());
+homeBtn.addEventListener('click',goHome);
+heroEl.addEventListener('dblclick',goHome);
 heroEl.addEventListener('pointerleave',()=>{lamp.inside=false;lamp.down=false;par.tx=par.ty=0});
 heroEl.addEventListener('pointerdown',e=>{const r=heroEl.getBoundingClientRect();lamp.down=true;lamp.drag=false;lamp.px=e.clientX-r.left;lamp.py=e.clientY-r.top;
   lamp.tx=lamp.px;lamp.ty=lamp.py;lamp.inside=true;lamp.last=performance.now();lamp.tr=lampBase()*1.35});
@@ -1071,7 +1131,7 @@ const io=new IntersectionObserver(es=>es.forEach(e=>{
   else if(e.target===pW)polarVisible=e.isIntersecting;
 }),{threshold:0});
 io.observe(heroEl);io.observe(pW);
-function jiaToggle(){const y=scrollY,hH=heroEl.offsetHeight,end=document.getElementById('liuchuan').offsetTop;jia.classList.toggle('on',y>hH*.6&&y<end-innerHeight*.4)}
+function jiaToggle(){const y=scrollY,a=document.getElementById('ci').offsetTop,z=document.getElementById('ziwei');jia.classList.toggle('on',y>a-innerHeight*.25&&y<z.offsetTop+z.offsetHeight-innerHeight*.6)}
 const below=[...document.querySelectorAll('.rv')].filter(el=>el.getBoundingClientRect().top>innerHeight);
 if(!RM){const ro=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){e.target.classList.add('in');ro.unobserve(e.target)}}),{rootMargin:'0px 0px -8% 0px'});below.forEach(el=>ro.observe(el));}
 
