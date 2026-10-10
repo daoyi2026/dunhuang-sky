@@ -29,7 +29,7 @@
 }
 *{box-sizing:border-box}
 html{background:var(--night)}
-body{background:var(--night);color:var(--silk);font-family:var(--f-display);font-weight:300;font-size:16px;line-height:1.85;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+body{margin:0;background:var(--night);color:var(--silk);font-family:var(--f-display);font-weight:300;font-size:16px;line-height:1.85;-webkit-font-smoothing:antialiased;overflow-x:hidden}
 ::selection{background:var(--cinnabar);color:var(--silk)}
 a{color:inherit}
 :focus-visible{outline:2px solid var(--ochre);outline-offset:3px}
@@ -42,6 +42,17 @@ body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:90;bac
 .nav{position:fixed;top:0;left:0;right:0;z-index:80;display:flex;justify-content:space-between;align-items:center;gap:16px;
   padding:calc(14px + env(safe-area-inset-top,0px)) var(--gutter) 14px;mix-blend-mode:difference;color:#e9dcbc}
 .nav .brand{font-family:var(--f-display);font-weight:900;font-size:17px;letter-spacing:.3em;text-decoration:none}
+.nav-r{display:flex;align-items:center;gap:clamp(16px,2.6vw,36px)}
+.snd{font:inherit;font-size:12px;letter-spacing:.3em;color:inherit;background:transparent;border:1px solid rgba(233,220,188,.45);border-radius:999px;
+  padding:5px 12px 5px 12px;cursor:pointer;display:flex;align-items:center;gap:9px;transition:border-color .3s}
+.snd:hover{border-color:#e9dcbc}
+.snd .bars{display:inline-flex;align-items:flex-end;gap:2px;height:10px}
+.snd .bars i{display:block;width:2px;height:2px;background:currentColor;transition:height .3s}
+.snd[aria-pressed="true"] .bars i{animation:eq 1.2s ease-in-out infinite}
+.snd[aria-pressed="true"] .bars i:nth-child(2){animation-delay:-.4s}.snd[aria-pressed="true"] .bars i:nth-child(3){animation-delay:-.8s}.snd[aria-pressed="true"] .bars i:nth-child(4){animation-delay:-.2s}
+@keyframes eq{0%,100%{height:3px}50%{height:10px}}
+.snd.nudge{animation:nudge 2.4s 3s ease-in-out 3}
+@keyframes nudge{0%,100%{box-shadow:0 0 0 0 rgba(233,220,188,0)}50%{box-shadow:0 0 0 6px rgba(233,220,188,.18)}}
 .nav ul{display:flex;gap:clamp(12px,2.4vw,32px);list-style:none;margin:0;padding:0}
 .nav ul a{text-decoration:none;font-size:13px;letter-spacing:.3em;opacity:.8;transition:opacity .3s}
 .nav ul a:hover{opacity:1}
@@ -238,12 +249,15 @@ h3{font-weight:500;font-size:22px;letter-spacing:.1em;margin:0}
 <body>
 <nav class="nav" aria-label="章节">
   <a class="brand" href="#top">敦煌星图</a>
+  <div class="nav-r">
   <ul>
     <li><a href="#juan">展卷</a></li>
     <li><a href="#ci">十二次</a></li>
     <li><a href="#ziwei">紫微</a></li>
     <li><a href="#liuchuan">流传</a></li>
   </ul>
+  <button type="button" class="snd nudge" id="snd" aria-pressed="false" aria-label="播放背景音乐"><span class="bars" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span class="snd-l">聆听</span></button>
+  </div>
 </nav>
 
 <header class="hero" id="top">
@@ -410,6 +424,78 @@ h3{font-weight:500;font-size:22px;letter-spacing:.1em;margin:0}
 (()=>{
 const vert=(el,txt)=>{el.innerHTML='';[...txt].forEach(ch=>{const i=document.createElement('span');i.textContent=ch===' '?'\u3000':ch;el.appendChild(i)});el.setAttribute('aria-label',txt)};
 const RM = matchMedia('(prefers-reduced-motion: reduce)').matches;
+/* ───────── 声音：实时合成的大漠夜曲 ─────────
+   宫、徵持续低音 + 风声 + 五声音阶拨弦 + 偶尔一声钟磬；灯照亮星官时拨出对应的音 */
+const SND=(()=>{
+  let ac=null,on=false,master,dry,rev,timer=null,bellTimer=null,lastPluck=0,deg=4;
+  const SC=[0,2,4,7,9],BASE=146.83; /* D 宫 */
+  const fq=(d,o=0)=>{const q=Math.floor(d/5),i=((d%5)+5)%5;return BASE*Math.pow(2,(SC[i]+12*(o+q))/12)};
+  const imp=(sec,dec)=>{const r=ac.sampleRate,n=Math.floor(r*sec),b=ac.createBuffer(2,n,r);for(let c=0;c<2;c++){const d=b.getChannelData(c);for(let i=0;i<n;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/n,dec)}return b};
+  function init(){
+    ac=new (window.AudioContext||window.webkitAudioContext)();
+    master=ac.createGain();master.gain.value=0;
+    const comp=ac.createDynamicsCompressor();comp.threshold.value=-20;comp.ratio.value=3;
+    master.connect(comp);comp.connect(ac.destination);
+    rev=ac.createConvolver();rev.buffer=imp(5.5,2.8);const wet=ac.createGain();wet.gain.value=.6;rev.connect(wet);wet.connect(master);
+    dry=ac.createGain();dry.gain.value=.55;dry.connect(master);
+    /* 低音：宫与徵 */
+    const dg=ac.createGain();dg.gain.value=.045;const lp=ac.createBiquadFilter();lp.type='lowpass';lp.frequency.value=380;lp.Q.value=.5;
+    [[73.42,'sine',.55],[110,'sine',.3],[146.83,'triangle',.08],[73.7,'sawtooth',.04]].forEach(([f,t,g])=>{const o=ac.createOscillator();o.type=t;o.frequency.value=f;const gg=ac.createGain();gg.gain.value=g;o.connect(gg);gg.connect(lp);o.start()});
+    lp.connect(dg);dg.connect(dry);dg.connect(rev);
+    const l1=ac.createOscillator();l1.frequency.value=.045;const l1g=ac.createGain();l1g.gain.value=.015;l1.connect(l1g);l1g.connect(dg.gain);l1.start();
+    /* 风 */
+    const nb=ac.createBuffer(1,ac.sampleRate*4,ac.sampleRate),nd=nb.getChannelData(0);for(let i=0;i<nd.length;i++)nd[i]=Math.random()*2-1;
+    const ns=ac.createBufferSource();ns.buffer=nb;ns.loop=true;
+    const bp=ac.createBiquadFilter();bp.type='bandpass';bp.frequency.value=520;bp.Q.value=1.1;
+    const wg=ac.createGain();wg.gain.value=.02;ns.connect(bp);bp.connect(wg);wg.connect(dry);wg.connect(rev);ns.start();
+    const w1=ac.createOscillator();w1.frequency.value=.06;const w1g=ac.createGain();w1g.gain.value=300;w1.connect(w1g);w1g.connect(bp.frequency);w1.start();
+    const w2=ac.createOscillator();w2.frequency.value=.09;const w2g=ac.createGain();w2g.gain.value=.014;w2.connect(w2g);w2g.connect(wg.gain);w2.start();
+  }
+  /* 拨弦：三角波 + 泛音，起音快、余音长，尾音带一点吟 */
+  function pluck(f,vel=1,when=0){
+    if(!on)return;const t=ac.currentTime+when;
+    const g=ac.createGain();g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(.15*vel,t+.006);g.gain.exponentialRampToValueAtTime(.05*vel,t+.4);g.gain.exponentialRampToValueAtTime(.0001,t+4);
+    const lp=ac.createBiquadFilter();lp.type='lowpass';lp.frequency.setValueAtTime(Math.min(9000,f*8),t);lp.frequency.exponentialRampToValueAtTime(f*1.8,t+1.5);
+    const o1=ac.createOscillator();o1.type='triangle';o1.frequency.value=f;
+    const o2=ac.createOscillator();o2.type='sine';o2.frequency.value=f*2.004;const g2=ac.createGain();g2.gain.value=.3;
+    const o3=ac.createOscillator();o3.type='sine';o3.frequency.value=f*3.01;const g3=ac.createGain();g3.gain.setValueAtTime(.25,t);g3.gain.exponentialRampToValueAtTime(.001,t+.5);
+    const v=ac.createOscillator();v.frequency.value=4.8;const vg=ac.createGain();vg.gain.setValueAtTime(0,t);vg.gain.linearRampToValueAtTime(0,t+.45);vg.gain.linearRampToValueAtTime(f*.007,t+1.3);
+    v.connect(vg);vg.connect(o1.frequency);vg.connect(o2.frequency);
+    o1.connect(lp);o2.connect(g2);g2.connect(lp);o3.connect(g3);g3.connect(lp);lp.connect(g);g.connect(dry);g.connect(rev);
+    [o1,o2,o3,v].forEach(o=>{o.start(t);o.stop(t+4.2)});
+  }
+  /* 钟磬：非谐泛音，长余音 */
+  function bell(f,vel=1,when=0){
+    if(!on)return;const t=ac.currentTime+when;
+    [[1,1,7],[2.76,.45,4],[5.4,.22,2.4],[8.93,.1,1.4]].forEach(([r,a,d])=>{const o=ac.createOscillator();o.type='sine';o.frequency.value=f*r;const g=ac.createGain();
+      g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(.05*a*vel,t+.004);g.gain.exponentialRampToValueAtTime(.0001,t+d);o.connect(g);g.connect(rev);g.connect(dry);o.start(t);o.stop(t+d+.1)});
+  }
+  function phrase(){
+    if(!on)return;
+    const n=1+Math.floor(Math.random()*Math.random()*4);let w=0;
+    for(let i=0;i<n;i++){deg=Math.max(0,Math.min(11,deg+[-2,-1,-1,1,1,2,0][Math.floor(Math.random()*7)]));pluck(fq(deg),.55+Math.random()*.35,w);w+=.45+Math.random()*.7}
+    timer=setTimeout(phrase,(w+3+Math.random()*5)*1000);
+  }
+  function bells(){if(!on)return;bell(fq(0,-1),.9);if(Math.random()<.5)bell(fq(3,-1),.5,2.2);bellTimer=setTimeout(bells,(22+Math.random()*20)*1000)}
+  function toggle(){
+    if(!ac)init();on=!on;
+    if(on){ac.resume();master.gain.cancelScheduledValues(ac.currentTime);master.gain.setTargetAtTime(.9,ac.currentTime,1.4);
+      clearTimeout(timer);clearTimeout(bellTimer);timer=setTimeout(phrase,1800);bellTimer=setTimeout(bells,600)}
+    else{master.gain.cancelScheduledValues(ac.currentTime);master.gain.setTargetAtTime(0,ac.currentTime,.35);clearTimeout(timer);clearTimeout(bellTimer);
+      setTimeout(()=>{if(!on)ac.suspend()},1600)}
+    return on;
+  }
+  document.addEventListener('visibilitychange',()=>{if(!ac||!on)return;document.hidden?ac.suspend():ac.resume()});
+  const hn=s=>{let h=0;for(const ch of s)h=(h*31+ch.codePointAt(0))>>>0;return h};
+  return{
+    toggle,get on(){return on},
+    star(name){if(!on)return;const now=performance.now();if(now-lastPluck<220)return;lastPluck=now;const h=hn(name);pluck(fq(h%10,0),.7)},
+    chime(i){if(!on)return;bell(fq(i%5,0),.7)},
+    tap(){if(!on)return;bell(fq(2,1),.35)}
+  };
+})();
+const sndBtn=document.getElementById('snd');
+sndBtn.addEventListener('click',()=>{const v=SND.toggle();sndBtn.setAttribute('aria-pressed',String(v));sndBtn.querySelector('.snd-l').textContent=v?'静听中':'聆听';sndBtn.setAttribute('aria-label',v?'关闭背景音乐':'播放背景音乐');sndBtn.classList.remove('nudge')});
 const D2R = Math.PI/180;
 const C = {night:'#0a1430',silk:'#e9dcbc',silk2:'#d9c79f',ink:'#1d1611',inkSoft:'#4a3b2c',cin:'#b4321c',ochre:'#d6a23a',star:'#eef0ff'};
 
@@ -907,6 +993,7 @@ function heroFrame(t){
     let md=1e9,any=false,x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
     g.idx.forEach(i=>{if(!PV[i])return;any=true;const x=PX[i],y=PY[i];if(x<x0)x0=x;if(x>x1)x1=x;if(y<y0)y0=y;if(y>y1)y1=y;if(R>2){const dd=Math.hypot(x-lamp.x,y-cy);if(dd<md)md=dd}});
     const near=any&&md<R*.85;if(near)g.hold=t;
+    if(near&&!g.was&&g.p<.6)SND.star(g.name);g.was=near;
     const tgt=near||t-g.hold<6000?1:0;
     g.p=RM?tgt:g.p+(tgt-g.p)*(tgt?.03:.012);g.lit+=((near?1:0)-g.lit)*.06;
     if(!any||g.p<.01){if(g.p<.01)g.place=null;return}
@@ -1028,7 +1115,7 @@ function bandFrame(force){
   const u=RA0+0.4+p*23.2;
   drawBand(ctx,W,H,{raC:u%24,decC:4,cy:H*.56,k,pph,style:'paper',grid:true,labelSize:W<700?15:19,texSeed:5});
   let idx=CI.findIndex(c=>u>=c.u&&u<c.uEnd); if(idx<0)idx=11;
-  if(idx!==curCi){curCi=idx;const c=CI[idx];
+  if(idx!==curCi){if(curCi>=0)SND.chime(idx);curCi=idx;const c=CI[idx];
     vert($('ciName'),c.name);$('ciNum').textContent=NUM[idx];$('ciMonth').textContent=c.month;
     vert($('ciDeg'),`自${c.from.replace(/\d+/,d=>toCnNum(+d))}度至${c.to.replace(/\d+/,d=>toCnNum(+d))}度`);
     vert($('ciBranch'),`于辰在${c.branch}`);vert($('ciField'),`${c.state}之分野属${c.zhou}`);
@@ -1109,7 +1196,7 @@ function updateYear(){
 }
 yearIn.addEventListener('input',()=>{updateYear();polarDirty=true});
 let tween=null;
-document.querySelectorAll('#stops button').forEach(b=>b.addEventListener('click',()=>{
+document.querySelectorAll('#stops button').forEach(b=>b.addEventListener('click',()=>{SND.tap();
   const from=+yearIn.value,to=+b.dataset.y,t0=performance.now(),dur=RM?0:1400;
   tween=t=>{const k=dur?Math.min(1,(t-t0)/dur):1,e=1-Math.pow(1-k,4);yearIn.value=Math.round((from+(to-from)*e)/10)*10;if(k>=1){yearIn.value=to;tween=null}updateYear();polarDirty=true};
 }));
