@@ -48,7 +48,7 @@ body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:90;bac
 @media (max-width:640px){.nav ul{display:none}}
 
 /* ── hero ── */
-.hero{position:relative;height:min(100svh,940px);min-height:620px;overflow:hidden;background:#03071a;cursor:none}
+.hero{position:relative;height:min(100svh,940px);min-height:620px;overflow:hidden;background:#03071a;cursor:none;touch-action:pan-y;user-select:none;-webkit-user-select:none}
 #heroCanvas{position:absolute;inset:0;width:100%;height:100%;display:block}
 .lamp-read{position:absolute;left:0;top:0;pointer-events:none;z-index:4;transform:translate(calc(var(--lx,50%) + var(--lr,180px)*0.8),calc(var(--ly,50%) + var(--lr,180px)*0.55));
   font-family:var(--f-mono);font-size:10.5px;letter-spacing:.12em;color:rgba(233,220,188,.75);white-space:nowrap;line-height:1.6;transition:opacity .6s}
@@ -270,7 +270,7 @@ h3{font-weight:500;font-size:22px;letter-spacing:.1em;margin:0}
     <div class="hero-side">
       <p>一卷出自敦煌莫高窟藏经洞的唐代写本，画下了肉眼可见的整片天空。它承载着中国古代的星官体系，是世界现存最古老、星数最多的全天星图之一。</p>
       <div class="hero-meta mono"><span>唐 · 约公元 649–684</span><span>1339 星</span><span>257 星官</span></div>
-      <div class="hint mono"><i></i>移动光标掌灯，灯下星空化作千年写本</div>
+      <div class="hint mono"><i></i>掌灯照见写本；移向边缘或拖动，转动星空</div>
     </div>
   </div>
 </header>
@@ -384,7 +384,7 @@ h3{font-weight:500;font-size:22px;letter-spacing:.1em;margin:0}
       <li class="rv"><time>2009</time><h3>系统测量</h3><p>Bonnet-Bidaud 等人逐星比对现代星表，确认其投影方式与精度，并给出成图年代的推定。</p></li>
     </ol>
     <div class="colophon">
-      <p>本页星位取自现代星表（J2000 历元）中各星官的主要成员；二十八宿、北斗、紫微诸星按实测位置绘出，其余细小星点为示意分布，用以呈现原图三色星点的质感。十二次起讫度数、分野与月份依《晋书·天文志》与原卷说明文字。</p>
+      <p>本页星位取自现代星表（J2000 历元）中各星官的主要成员；二十八宿、北斗、紫微诸星按实测位置绘出，其余细小星点为示意分布，用以呈现原图三色星点的质感。十二次起讫度数、分野与月份依《晋书·天文志》与原卷说明文字；首屏星官题记节录自《晋书·天文志》。</p>
       <p class="mono">唐 · 敦煌星图</p>
     </div>
   </div>
@@ -600,256 +600,344 @@ function drawBand(ctx,W,H,o){
   }
 }
 
-/* ───────── HERO: 夜空与掌灯 ───────── */
+/* ───────── HERO: 可转动的穹窿 ───────── */
 const heroEl=document.querySelector('.hero'), hC=document.getElementById('heroCanvas');
 const lampName=document.getElementById('lampName'), lampCoord=document.getElementById('lampCoord');
-const H_M=0.1, GNP=vec(12.8573,27.1283);
 function hash(x,y){let h=Math.imul(x,374761393)+Math.imul(y,668265263)|0;h=Math.imul(h^(h>>>13),1274126177);return ((h^(h>>>16))>>>0)/4294967295}
 function vnoise(x,y){const xi=Math.floor(x),yi=Math.floor(y),xf=x-xi,yf=y-yi,u=xf*xf*(3-2*xf),v=yf*yf*(3-2*yf);const a=hash(xi,yi),b=hash(xi+1,yi),c=hash(xi,yi+1),d=hash(xi+1,yi+1);return a+(b-a)*u+(c-a)*v+(a-b-c+d)*u*v}
-function fbm(x,y,o){let s=0,a=.5,f=1;for(let i=0;i<o;i++){s+=a*vnoise(x*f,y*f);f*=2.03;a*=.5}return s}
+function hash3(x,y,z){let h=Math.imul(x,374761393)+Math.imul(y,668265263)+Math.imul(z,2147483587)|0;h=Math.imul(h^(h>>>13),1274126177);return ((h^(h>>>16))>>>0)/4294967295}
+function vnoise3(x,y,z){const xi=Math.floor(x),yi=Math.floor(y),zi=Math.floor(z);let xf=x-xi,yf=y-yi,zf=z-zi;xf=xf*xf*(3-2*xf);yf=yf*yf*(3-2*yf);zf=zf*zf*(3-2*zf);
+  const L=(a,b,t)=>a+(b-a)*t;
+  return L(L(L(hash3(xi,yi,zi),hash3(xi+1,yi,zi),xf),L(hash3(xi,yi+1,zi),hash3(xi+1,yi+1,zi),xf),yf),L(L(hash3(xi,yi,zi+1),hash3(xi+1,yi,zi+1),xf),L(hash3(xi,yi+1,zi+1),hash3(xi+1,yi+1,zi+1),xf),yf),zf)}
+function fbm3(x,y,z,o){let s=0,a=.5,f=1;for(let i=0;i<o;i++){s+=a*vnoise3(x*f,y*f,z*f);f*=2.03;a*=.5}return s}
 const ease=x=>{x=Math.max(0,Math.min(1,x));return x*x*(3-2*x)};
-let HS=null, HS_dot=null, heroVisible=true;
-const par={x:0,y:0,tx:0,ty:0};
-const lamp={x:0,y:0,tx:0,ty:0,r:180,tr:180,user:false,shown:0};
-const lampBase=()=>Math.max(120,Math.min(210,innerWidth*.13));
 function mk(w,h){const c=document.createElement('canvas');c.width=Math.max(1,Math.round(w));c.height=Math.max(1,Math.round(h));return c}
+const GAL=[[-0.0548755604,-0.8734370902,-0.4838350155],[0.4941094279,-0.4448296300,0.7469822445],[-0.8676661490,-0.1980763734,0.4559837762]];
+
+/* 星官题记，节录自《晋书·天文志》 */
+const NOTES={
+ 角:'角二星，为天关，其间天门也',亢:'亢四星，天子之内朝也',氐:'氐四星，王者之宿宫',房:'房四星，为明堂，天子布政之宫',心:'心三星，天王正位也',
+ 尾:'尾九星，后宫之场',箕:'箕四星，后妃之府，主八风',斗:'南斗六星，天庙也，丞相太宰之位',牛:'牵牛六星，天之关梁，主牺牲事',女:'须女四星，天之少府也',
+ 虚:'虚二星，冢宰之官也',危:'危三星，主天府天市架屋',室:'营室二星，天子之宫也',壁:'东壁二星，主文章，天下图书之秘府',奎:'奎十六星，天之武库也',
+ 娄:'娄三星，为天狱，主苑牧牺牲',胃:'胃三星，天之厨藏，主仓廪',昴:'昴七星，天之耳目也',毕:'毕八星，主边兵，主弋猎',觜:'觜觿三星，为三军之候',
+ 参:'参十星，一曰天市，一曰铁钺',井:'东井八星，天之南门，黄道所经',鬼:'舆鬼五星，天目也，主视明察奸谋',柳:'柳八星，天之厨宰也',星:'七星，一名天都，主衣裳文绣',
+ 张:'张六星，主珍宝宗庙所用',翼:'翼二十二星，天之乐府',轸:'轸四星，主冢宰辅臣，主车骑',
+ 北斗:'北斗七星，七政之枢机，阴阳之元本',北极:'北极五星，北辰最尊者也',勾陈:'勾陈六星，大帝之正妃也',紫微左垣:'紫宫垣十五星，东蕃八，大帝之坐也',
+ 紫微右垣:'西蕃七，天子之常居也',文昌:'文昌六星，天之六府也',织女:'织女三星，天女也，主果蓏丝帛珍宝',河鼓:'河鼓三星，天鼓也，主军鼓',
+ 天津:'天津九星，横河中，主四渎津梁',轩辕:'轩辕十七星，黄帝之神，黄龙之体也',五车:'五车五星，天子五兵',北河:'北河三星，一曰北戍',南河:'南河三星，一曰南戍',
+ 天狼:'狼一星，为野将，主侵掠',大角:'大角一星，天王座也',天钩:'天钩九星，在天河中，状如钩',少卫:'少卫，紫宫藩卫之星'
+};
+
+const view={ra:5.15,dec:14,vra:0,vdec:0,f:600,cx:0,cy:0,C:[0,0,0],E:[0,0,0],N:[0,0,0]};
+let HS=null, heroVisible=true, lastT=0;
+const par={x:0,y:0,tx:0,ty:0};
+const lamp={x:0,y:0,tx:0,ty:0,r:180,tr:180,user:false,inside:false,shown:0,last:-1e9,down:false,drag:false,px:0,py:0};
+const lampBase=()=>Math.max(120,Math.min(200,innerWidth*.12));
+function setBasis(){const a=view.ra*15*D2R,d=view.dec*D2R,ca=Math.cos(a),sa=Math.sin(a),cd=Math.cos(d),sd=Math.sin(d);
+  view.C=[cd*ca,cd*sa,sd];view.E=[-sa,ca,0];view.N=[-sd*ca,-sd*sa,cd]}
+/* 屏幕点 → 天球坐标 */
+function unproj(sx,sy){const X=(view.cx-sx)/view.f,Y=(view.cy-sy)/view.f,r=Math.hypot(X,Y),C=view.C,E=view.E,N=view.N;
+  if(r<1e-9)return C.slice();const c=2*Math.atan(r/2),s=Math.sin(c)/r,k=Math.cos(c);
+  return[k*C[0]+s*(X*E[0]+Y*N[0]),k*C[1]+s*(X*E[1]+Y*N[1]),k*C[2]+s*(X*E[2]+Y*N[2])]}
+
+/* 银河：在银道坐标里生成一次 */
+let GT=null;
+function buildGT(){
+  const w=720,h=160,img=new Uint8ClampedArray(w*h*4);
+  for(let j=0;j<h;j++){const b=40-j*80/(h-1),br=b*D2R,cb=Math.cos(br),sb=Math.sin(br);
+    for(let i=0;i<w;i++){const l=i/w*360,lr=l*D2R,gx=cb*Math.cos(lr),gy=cb*Math.sin(lr),gz=sb;
+      const n=fbm3(gx*2.4+3,gy*2.4,gz*2.4,5),n2=fbm3(gx*7+5,gy*7,gz*7,4),lane=fbm3(gx*3.6+9,gy*3.6,gz*3.6,4);
+      const dark=ease((lane-.42)/.2),dl=((l+180)%360)-180;
+      const bulge=1+1.2*Math.exp(-(dl*dl)/(2*30*30))*Math.exp(-(b*b)/(2*10*10));
+      let I=(Math.exp(-(b*b)/(2*8.5*8.5))*(.1+2.2*n*n*n)*(1-.85*dark)+Math.exp(-(b*b)/(2*3.2*3.2))*.35*n2*(1-.8*dark))*bulge+.02*n;
+      I=Math.min(1,I);const g=n2-.5,p=(j*w+i)*4;
+      img[p]=38+I*120+Math.max(0,g)*I*110;img[p+1]=74+I*140+g*I*60;img[p+2]=142+I*105;img[p+3]=I*215;
+    }}
+  GT={w,h,img};
+}
+/* 暗星 */
+let DUST=null;
+function buildDust(){
+  let s=1907;const r=()=>((s=(s*16807)%2147483647)/2147483647);
+  const out=[];
+  for(let i=0;i<9000&&out.length<6500;i++){const z=r()*2-1,ph=r()*Math.PI*2,q=Math.sqrt(1-z*z),v=[q*Math.cos(ph),q*Math.sin(ph),z];
+    const gb=Math.asin(GAL[2][0]*v[0]+GAL[2][1]*v[1]+GAL[2][2]*v[2])/D2R;
+    if(r()>.2+.8*Math.exp(-(gb*gb)/(2*15*15)))continue;
+    const sz=.4+Math.pow(r(),6)*1.2, a=Math.floor(r()*4), t=r(), col=t<.72?0:(t<.88?1:2);
+    out.push({x:v[0],y:v[1],z:v[2],s:sz,b:a*3+col});
+  }
+  DUST=out;
+}
+const DUST_FS=[];[.22,.38,.56,.78].forEach(a=>['220,228,255','255,226,190','190,215,255'].forEach(c=>DUST_FS.push(`rgba(${c},${a})`)));
+
+/* 星点、星官 */
+const SV=STARS.map(s=>vec(s.ra,s.dec));
+const PX=new Float32Array(STARS.length),PY=new Float32Array(STARS.length),PV=new Uint8Array(STARS.length);
+const HG=GROUPS.map(g=>{const set=new Set(g.idx);const segs=[];LINES.forEach(([a,b])=>{if(set.has(a)&&set.has(b))segs.push([a,b])});
+  const note=NOTES[g.name];return{name:g.name,fam:g.fam,mansion:g.mansion,idx:g.idx,segs,phr:note?note.split('，'):[],p:0,hold:-1e9,lit:0,place:null}});
+const DECO_LINES=LINES.filter(([a])=>!STARS[a].named);
+const NAMED_LINES=LINES.filter(([a])=>STARS[a].named);
+const TW=STARS.map((s,i)=>[((i*7919)%628)/100,.6+((i*104729)%110)/100]);
+
+/* 长信宫灯 */
+let FIG=null;
+function buildFig(){
+  const k=W_isSmall()?1.05:1.3, d=DPR, Wf=52, Hf=58, ox=13, oy=35;
+  const c=mk(Wf*k*d,Hf*k*d), x=c.getContext('2d');x.scale(k*d,k*d);x.translate(ox,oy);
+  const gold=x.createLinearGradient(-10,-33,34,20);gold.addColorStop(0,'#f8dd94');gold.addColorStop(.42,'#cf9c45');gold.addColorStop(1,'#6a461a');
+  x.lineJoin='round';x.lineCap='round';x.strokeStyle='rgba(36,20,6,.8)';x.lineWidth=.8;
+  const F=()=>{x.fillStyle=gold;x.fill();x.stroke()};
+  x.beginPath();x.moveTo(18,-18);x.bezierCurveTo(14,-8,11,4,9,12);x.quadraticCurveTo(4,14,4,18.5);x.lineTo(35,19);x.bezierCurveTo(36,6,33,-8,30,-18);x.quadraticCurveTo(24,-21,18,-18);x.closePath();F();
+  x.save();x.strokeStyle='rgba(70,42,12,.6)';x.beginPath();x.moveTo(22,-12);x.quadraticCurveTo(20,2,16,17);x.moveTo(27,-10);x.quadraticCurveTo(28.5,4,27.5,18);x.moveTo(9,14);x.quadraticCurveTo(16,12,22,15);x.stroke();x.restore();
+  x.beginPath();x.arc(24,-24.5,5,0,7);F();
+  x.beginPath();x.ellipse(27,-30,3.3,2.4,-.5,0,7);F();
+  x.beginPath();x.moveTo(17,-4);x.quadraticCurveTo(10,8,2,10.5);x.lineTo(2,14);x.quadraticCurveTo(12,12.5,20.5,0);x.closePath();F();
+  x.beginPath();x.rect(-1.8,7,3.6,7);F();
+  x.beginPath();x.ellipse(0,14.5,6.5,1.9,0,0,7);F();
+  x.beginPath();x.ellipse(0,7.6,11,2.6,0,0,7);F();
+  x.beginPath();x.moveTo(-9.5,-7);x.quadraticCurveTo(-11.8,0,-9.5,7);x.lineTo(-4.4,7);x.lineTo(-4.4,-7);x.closePath();F();
+  x.beginPath();x.moveTo(9.5,-7);x.quadraticCurveTo(11.8,0,9.5,7);x.lineTo(4.4,7);x.lineTo(4.4,-7);x.closePath();F();
+  x.beginPath();x.ellipse(0,-7.6,10,2.4,0,0,7);F();
+  x.beginPath();x.moveTo(-5,-8.6);x.bezierCurveTo(-5.5,-20,4,-27.5,13,-24.5);x.quadraticCurveTo(18,-22.5,20.5,-17);x.lineTo(15,-14);x.quadraticCurveTo(10,-18.5,6,-15);x.quadraticCurveTo(3.6,-11.5,5,-8.6);x.closePath();F();
+  FIG={c,ox:ox*k,oy:oy*k,w:Wf*k,h:Hf*k,k};
+}
+const W_isSmall=()=>innerWidth<760;
 
 function heroBuild(){
-  const r=heroEl.getBoundingClientRect(); const W=r.width,H=r.height; if(W<2)return;
+  const r=heroEl.getBoundingClientRect();const W=r.width,H=r.height;if(W<2)return;
+  if(!GT)buildGT();if(!DUST)buildDust();
+  view.f=W<760?Math.max(W,H*.62)*.62:W*.6;
+  view.cx=W*(W<760?.5:.56);view.cy=H*.48;
   const d=Math.min(DPR,1.5);
-  const OW=Math.round(W*(1+2*H_M)), OH=Math.round(H*(1+2*H_M));
-  const k=H/(merc(50)-merc(-26)); const pph=Math.max(k*Math.PI/12, W/7.2);
-  const o={raC:W<760?5.75:5.1,decC:12,cy:OH*.5,k,pph};
-  const P=bandProj(o,OW,OH);
-  const inv=(x,y)=>{const ra=((o.raC-(x-OW/2)/o.pph)%24+24)%24;const m=merc(o.decC)-(y-o.cy)/o.k;return[ra,(2*Math.atan(Math.exp(m))-Math.PI/2)/D2R]};
-  const gal=(ra,dec)=>{const v=vec(ra,dec);return Math.asin(v[0]*GNP[0]+v[1]*GNP[1]+v[2]*GNP[2])/D2R};
-
-  /* 银河：按真实银道面位置生成 */
-  const S=5, nw=Math.ceil(OW/S), nh=Math.ceil(OH/S);
-  const low=mk(nw,nh), lx=low.getContext('2d'), img=lx.createImageData(nw,nh), px=img.data;
-  for(let y=0;y<nh;y++)for(let x=0;x<nw;x++){
-    const [ra,dec]=inv(x*S,y*S), b=gal(ra,dec);
-    const band=Math.exp(-(b*b)/(2*8.5*8.5)), core=Math.exp(-(b*b)/(2*3.2*3.2));
-    const n=fbm(x*S/320,y*S/320,5), n2=fbm(x*S/110+40,y*S/110+7,4), lane=fbm(x*S/170+90,y*S/170+12,4);
-    const dark=ease((lane-.42)/.2);
-    let I=band*(.1+1.1*n*n*n*2)*(1-.85*dark)+core*.35*n2*(1-.8*dark)+.025*fbm(x*S/600+5,y*S/600,3);
-    I=Math.min(1,I);
-    const g=(n2-.5);
-    const i=(y*nw+x)*4;
-    px[i]=Math.min(255,38+I*120+Math.max(0,g)*I*110);
-    px[i+1]=Math.min(255,74+I*140+g*I*60);
-    px[i+2]=Math.min(255,142+I*105);
-    px[i+3]=Math.min(255,I*215);
-  }
-  lx.putImageData(img,0,0);
-  const neb=mk(OW,OH), nx=neb.getContext('2d');
-  nx.imageSmoothingQuality='high'; nx.filter='blur(5px)'; nx.drawImage(low,-S,-S,OW+2*S,OH+2*S); nx.filter='none';
-
-  /* 暗星层 */
-  const dust=mk(OW*d,OH*d), dx=dust.getContext('2d'); dx.scale(d,d);
-  let sd=1907; const rr=()=>((sd=(sd*16807)%2147483647)/2147483647);
-  const N=Math.round(OW*OH/420);
-  for(let i=0;i<N;i++){
-    const x=rr()*OW,y=rr()*OH; const [ra,dec]=inv(x,y); const b=gal(ra,dec);
-    if(rr()>.22+.78*Math.exp(-(b*b)/(2*16*16)))continue;
-    const s=.35+Math.pow(rr(),5)*1.3, a=.18+rr()*.62, t=rr();
-    dx.fillStyle=t<.7?`rgba(220,228,255,${a})`:(t<.88?`rgba(255,226,190,${a})`:`rgba(190,215,255,${a})`);
-    dx.beginPath();dx.arc(x,y,s,0,7);dx.fill();
-  }
-  STARS.forEach(s=>{if(s.named)return;const [x,y,dd]=P(s.ra,s.dec);if(Math.abs(dd)>(OW/2)/o.pph+.3)return;
-    dx.fillStyle=`rgba(225,232,255,${.35+(.12*(6-s.m))})`;dx.beginPath();dx.arc(x,y,.75+(5.6-s.m)*.18,0,7);dx.fill()});
-
-  /* 写本层：原卷的示意星、题记，按夜空配色绘出，只在灯下显现 */
-  const span=(OW/2)/o.pph+.3;
-  const paper=mk(OW*d,OH*d), pctx=paper.getContext('2d'); pctx.scale(d,d);
-  paperTexture(pctx,OW,OH,11);
-  {let q=77;const r=()=>((q=(q*16807)%2147483647)/2147483647);
-   pctx.strokeStyle='#5a4128';pctx.lineWidth=.7;for(let i=0;i<OW*OH/700;i++){pctx.globalAlpha=.05+r()*.08;const x=r()*OW,y=r()*OH,len=6+r()*30,a=(r()-.5)*.5;pctx.beginPath();pctx.moveTo(x,y);pctx.quadraticCurveTo(x+len*.5,y+a*8+(r()-.5)*4,x+len,y+a*len*.2);pctx.stroke()}
-   pctx.globalAlpha=1}
-  const ms=mk(OW*d,OH*d), mx=ms.getContext('2d'); mx.scale(d,d);
-  {const yE=P(0,0)[1];mx.save();mx.setLineDash([2,7]);mx.strokeStyle='rgba(233,220,188,.32)';mx.lineWidth=1;mx.beginPath();mx.moveTo(0,yE);mx.lineTo(OW,yE);mx.stroke();mx.restore();
-   mx.fillStyle='rgba(233,220,188,.5)';mx.font='11px "IBM Plex Mono",monospace';}
-  mx.lineCap='round';
-  LINES.forEach(([a,b,f])=>{const s1=STARS[a],s2=STARS[b];if(s1.named)return;const p1=P(s1.ra,s1.dec),p2=P(s2.ra,s2.dec);
-    if(Math.abs(p1[2])>span||Math.abs(p2[2])>span||Math.abs(p1[0]-p2[0])>OW*.5)return;
-    mx.globalAlpha=famA(f);mx.strokeStyle='rgba(233,220,188,.42)';mx.lineWidth=.9;mx.beginPath();mx.moveTo(p1[0],p1[1]);mx.lineTo(p2[0],p2[1]);mx.stroke()});
-  const darkDot=(c,x,y,r,fam,a)=>{c.globalAlpha=a;c.beginPath();c.arc(x,y,r,0,7);
-    if(fam==='石'){c.fillStyle='#e2583b';c.fill()}else if(fam==='甘'){c.fillStyle='#0a1430';c.fill();c.lineWidth=1;c.strokeStyle='rgba(240,228,196,.9)';c.stroke()}else{c.fillStyle='#e0ad45';c.fill()}};
-  STARS.forEach(s=>{if(s.named)return;const [x,y,dd]=P(s.ra,s.dec);if(Math.abs(dd)>span)return;darkDot(mx,x,y,2,s.fam,famA(s.fam)*.95)});
-  mx.globalAlpha=1;
-  const fs=W<760?14:16;
-  mx.font=`${fs}px "Ma Shan Zheng","Kaiti SC","STKaiti",serif`;mx.textAlign='center';mx.textBaseline='middle';
-  CI.forEach(c=>{const [x,,dd]=P(c.start,0);if(Math.abs(dd)>span)return;
-    const cols=[`自${c.from.replace(/\d+/,v=>toCnNum(+v))}度至${c.to.replace(/\d+/,v=>toCnNum(+v))}度`,`于辰在${c.branch}为${c.name}`,`${c.state}之分野属${c.zhou}`];
-    const y0=P(0,47)[1];
-    cols.forEach((col,ci)=>{mx.fillStyle=ci===1?'rgba(234,110,80,.9)':'rgba(236,224,194,.78)';[...col].forEach((ch,k)=>mx.fillText(ch,x-14-ci*(fs+7),y0+k*(fs+3)))});
-  });
-  mx.textAlign='left';mx.textBaseline='alphabetic';
-  const groups=[];
-  GROUPS.forEach(g=>{if(Math.abs(wrapH(g.ra-o.raC))>span+1.5)return;const set=new Set(g.idx);
-    const pts=g.idx.map(i=>{const [x,y]=P(STARS[i].ra,STARS[i].dec);return{x,y,m:STARS[i].m}});
-    const segs=[];LINES.forEach(([a,b])=>{if(!set.has(a)||!set.has(b))return;const p1=P(STARS[a].ra,STARS[a].dec),p2=P(STARS[b].ra,STARS[b].dec);if(Math.abs(p1[0]-p2[0])<OW*.5)segs.push([p1[0],p1[1],p2[0],p2[1]])});
-    const [lx,ly]=P(g.ra,g.dec);groups.push({name:g.name,fam:g.fam,mansion:g.mansion,pts,segs,lx,ly,p:0,hold:-1e9,lit:0});
-  });
-  HS_dot=darkDot;
-
-  /* 夜空命名星 */
-  const named=[]; STARS.forEach((s,i)=>{if(!s.named)return;const [x,y,dd]=P(s.ra,s.dec);if(Math.abs(dd)>span||y<-20||y>OH+20)return;
-    named.push({x,y,m:s.m,fam:s.fam,ph:rr()*6.28,sp:.6+rr()*1.1,id:i})});
-  const nlines=[]; LINES.forEach(([a,b])=>{const s1=STARS[a],s2=STARS[b];if(!s1.named)return;const p1=P(s1.ra,s1.dec),p2=P(s2.ra,s2.dec);
-    if(Math.abs(p1[2])>span||Math.abs(p2[2])>span||Math.abs(p1[0]-p2[0])>OW*.5)return;nlines.push([p1[0],p1[1],p2[0],p2[1]])});
-
-  /* 鸣沙山 */
-  const DW=W*1.3, DH=Math.min(H*.3,260);
-  const dunes=mk(DW*d,DH*d), dn=dunes.getContext('2d'); dn.scale(d,d);
-  const ridge=(base,amp,f,seed,fill,rim)=>{
-    dn.beginPath();dn.moveTo(0,DH);
-    const pts=[];
-    for(let x=0;x<=DW+4;x+=4){
-      const c=Math.pow(1-Math.abs(Math.sin(x*f+seed)),1.7);
-      const y=base-amp*(.62*c+.28*(.5+.5*Math.sin(x*f*.37+seed*2.1))+.1*Math.sin(x*f*3.3+seed));
-      pts.push([x,y]);dn.lineTo(x,y);
-    }
+  const tile=mk(420,420),tx=tile.getContext('2d');paperTexture(tx,420,420,11);
+  {let q=77;const rr=()=>((q=(q*16807)%2147483647)/2147483647);tx.strokeStyle='#5a4128';tx.lineWidth=.7;
+   for(let i=0;i<260;i++){tx.globalAlpha=.05+rr()*.08;const x=rr()*420,y=rr()*420,len=6+rr()*30,a=(rr()-.5)*.5;tx.beginPath();tx.moveTo(x,y);tx.quadraticCurveTo(x+len*.5,y+a*8,x+len,y+a*len*.2);tx.stroke()}tx.globalAlpha=1}
+  const DH=Math.min(H*.28,240),DW=W*1.3;
+  const dunes=mk(DW*d,DH*d),dn=dunes.getContext('2d');dn.scale(d,d);
+  const ridge=(base,amp,f,seed,fill,rim)=>{dn.beginPath();dn.moveTo(0,DH);const pts=[];
+    for(let x=0;x<=DW+4;x+=4){const c=Math.pow(1-Math.abs(Math.sin(x*f+seed)),1.7);const y=base-amp*(.62*c+.28*(.5+.5*Math.sin(x*f*.37+seed*2.1))+.1*Math.sin(x*f*3.3+seed));pts.push([x,y]);dn.lineTo(x,y)}
     dn.lineTo(DW,DH);dn.closePath();dn.fillStyle=fill;dn.fill();
-    if(rim){dn.beginPath();pts.forEach(([x,y],i)=>i?dn.lineTo(x,y):dn.moveTo(x,y));dn.strokeStyle=rim;dn.lineWidth=1;dn.stroke()}
-  };
+    if(rim){dn.beginPath();pts.forEach(([x,y],i)=>i?dn.lineTo(x,y):dn.moveTo(x,y));dn.strokeStyle=rim;dn.lineWidth=1;dn.stroke()}};
   ridge(DH*.62,DH*.42,.0034,1.3,'#0c1840','rgba(120,175,190,.16)');
   ridge(DH*.82,DH*.36,.0052,4.1,'#081232','rgba(214,162,58,.09)');
-  const gN=dn.createLinearGradient(0,DH*.6,0,DH);gN.addColorStop(0,'#050a20');gN.addColorStop(1,'#03061a');
-  ridge(DH*1.02,DH*.3,.0029,2.2,gN,null);
-
-  /* 静态渐变 */
+  const gN=dn.createLinearGradient(0,DH*.6,0,DH);gN.addColorStop(0,'#050a20');gN.addColorStop(1,'#03061a');ridge(DH*1.02,DH*.3,.0029,2.2,gN,null);
   const ctx0=hC.getContext('2d');
   const sky=ctx0.createLinearGradient(0,0,0,H);sky.addColorStop(0,'#02051a');sky.addColorStop(.55,'#08133a');sky.addColorStop(.85,'#132a5c');sky.addColorStop(1,'#0b1a42');
   const glow=ctx0.createLinearGradient(0,H*.6,0,H);glow.addColorStop(0,'rgba(79,154,132,0)');glow.addColorStop(.7,'rgba(79,154,132,.13)');glow.addColorStop(1,'rgba(214,162,58,.06)');
   const vig=ctx0.createRadialGradient(W*.55,H*.45,Math.min(W,H)*.3,W*.55,H*.45,Math.hypot(W,H)*.62);vig.addColorStop(0,'rgba(2,5,18,0)');vig.addColorStop(1,'rgba(2,5,18,.72)');
-
-  const lc=mk(W*d,H*d);
+  const S6=W<760?5:6, mw=mk(Math.ceil(W/S6),Math.ceil(H/S6));
+  buildFig();
+  HG.forEach(g=>g.place=null);
   const keep=HS?HS.t0:performance.now();
-  HS={W,H,OW,OH,o,inv,neb,dust,paper,ms,dot:HS_dot,named,nlines,groups,dunes,DW,DH,d,sky,glow,vig,lc,t0:keep,M:null,meteors:[],nextMeteor:keep+5200};
+  HS={W,H,d,tile,pat:null,dunes,DW,DH,sky,glow,vig,mw,S6,mwLast:null,dc:mk(W*d,H*d),dLast:null,lc:mk(W*d,H*d),t0:keep,meteors:[],nextMeteor:keep+5200};
 }
 
-function skyTransform(ctx,k,ang,t){
-  const S=HS, pvx=S.W*.12, pvy=-S.H*1.4;
-  ctx.translate(pvx,pvy);ctx.rotate(ang);ctx.translate(-pvx,-pvy);
-  ctx.translate(-S.W*H_M+par.x*k*30,-S.H*H_M+par.y*k*18);
+function renderMilky(){
+  const S=HS,mw=S.mw,w=mw.width,h=mw.height,S6=S.S6;
+  const lk=S.mwLast, cd=Math.cos(view.dec*D2R);
+  if(lk&&lk.w===w&&Math.abs(wrapH(view.ra-lk.ra))*.2618*view.f*cd+Math.abs(view.dec-lk.dec)*D2R*view.f<1.2)return;
+  S.mwLast={ra:view.ra,dec:view.dec,w};
+  const c=mw.getContext('2d'),id=c.createImageData(w,h),o=id.data,G=GT,gi=G.img;
+  const C=view.C,E=view.E,N=view.N,f=view.f,cx=view.cx,cy=view.cy;
+  for(let y=0;y<h;y++)for(let x=0;x<w;x++){
+    const X=(cx-x*S6)/f,Y=(cy-y*S6)/f,r=Math.hypot(X,Y);
+    let vx,vy,vz;if(r<1e-9){vx=C[0];vy=C[1];vz=C[2]}else{const cc=2*Math.atan(r/2),s=Math.sin(cc)/r,k=Math.cos(cc);
+      vx=k*C[0]+s*(X*E[0]+Y*N[0]);vy=k*C[1]+s*(X*E[1]+Y*N[1]);vz=k*C[2]+s*(X*E[2]+Y*N[2])}
+    const gz=GAL[2][0]*vx+GAL[2][1]*vy+GAL[2][2]*vz,b=Math.asin(gz)/D2R;
+    const p=(y*w+x)*4;if(b>40||b<-40){o[p+3]=0;continue}
+    const gx=GAL[0][0]*vx+GAL[0][1]*vy+GAL[0][2]*vz,gy=GAL[1][0]*vx+GAL[1][1]*vy+GAL[1][2]*vz;
+    let l=Math.atan2(gy,gx)/D2R;if(l<0)l+=360;
+    const q=((((40-b)*(G.h-1)/80)|0)*G.w+((l/360*G.w)|0)%G.w)*4;
+    o[p]=gi[q];o[p+1]=gi[q+1];o[p+2]=gi[q+2];o[p+3]=gi[q+3];
+  }
+  c.putImageData(id,0,0);
 }
+
+const darkDot=(c,x,y,r,fam,a)=>{c.globalAlpha=a;c.beginPath();c.arc(x,y,r,0,7);
+  if(fam==='石'){c.fillStyle='#e2583b';c.fill()}else if(fam==='甘'){c.fillStyle='#0a1430';c.fill();c.lineWidth=1.1;c.strokeStyle='rgba(240,228,196,.92)';c.stroke()}else{c.fillStyle='#e0ad45';c.fill()}};
+
 function heroFrame(t){
-  const S=HS; if(!S)return;
+  const S=HS;if(!S)return;
   const [ctx,W,H]=fit(hC);
-  const it=RM?1e9:t-S.t0;
-  par.x+=(par.tx-par.x)*.035; par.y+=(par.ty-par.y)*.035;
-  const ang=RM?0:.02*Math.sin((t-S.t0)/240000*Math.PI*2);
+  const it=RM?1e9:t-S.t0, dt=Math.min(.05,(t-(lastT||t))/1000);lastT=t;
+  par.x+=(par.tx-par.x)*.035;par.y+=(par.ty-par.y)*.035;
+
+  /* 转动：灯靠近边缘时，天穹朝那个方向转 */
+  let tvr=RM?0:.006, tvd=0;
+  if(lamp.inside&&!lamp.down&&!RM){
+    const zx=W*.15,zt=H*.16,zb=H*.14;
+    let ex=0,ey=0;
+    if(lamp.x>W-zx)ex=(lamp.x-(W-zx))/zx;else if(lamp.x<zx)ex=-(zx-lamp.x)/zx;
+    if(lamp.y<zt)ey=-(zt-lamp.y)/zt;else if(lamp.y>H-zb)ey=(lamp.y-(H-zb))/zb;
+    ex=Math.max(-1,Math.min(1,ex));ey=Math.max(-1,Math.min(1,ey));
+    if(ex||ey){tvr=-ex*Math.abs(ex)*1.5/Math.max(.3,Math.cos(view.dec*D2R));tvd=-ey*Math.abs(ey)*24}
+  }
+  if(!lamp.down){view.vra+=(tvr-view.vra)*.07;view.vdec+=(tvd-view.vdec)*.07;view.ra=((view.ra+view.vra*dt)%24+24)%24;view.dec=Math.max(-50,Math.min(84,view.dec+view.vdec*dt))}
+  setBasis();
+  const C=view.C,E=view.E,N=view.N,f=view.f;
 
   ctx.fillStyle=S.sky;ctx.fillRect(0,0,W,H);
-  ctx.save();skyTransform(ctx,.25,ang);ctx.globalAlpha=ease(it/3800)*.95;ctx.drawImage(S.neb,0,0,S.OW,S.OH);ctx.restore();
-  ctx.save();skyTransform(ctx,.5,ang);ctx.globalAlpha=ease((it-300)/2600);ctx.drawImage(S.dust,0,0,S.OW,S.OH);ctx.restore();
+  /* 银河 */
+  renderMilky();
+  ctx.save();ctx.globalAlpha=ease(it/3800)*.95;ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';
+  ctx.drawImage(S.mw,par.x*6,par.y*4,S.mw.width*S.S6,S.mw.height*S.S6);ctx.restore();
+  /* 暗星：视角变动超过一像素才重绘 */
+  {const a0=ease((it-300)/2600),dc=S.dc,lk=S.dLast,cd=Math.cos(view.dec*D2R);
+   if(!lk||Math.abs(wrapH(view.ra-lk.ra))*.2618*f*cd+Math.abs(view.dec-lk.dec)*D2R*f>=.8){
+    S.dLast={ra:view.ra,dec:view.dec};const dx=dc.getContext('2d'),dd=S.d;dx.setTransform(1,0,0,1,0,0);dx.clearRect(0,0,dc.width,dc.height);dx.setTransform(dd,0,0,dd,0,0);
+    const paths=DUST_FS.map(()=>new Path2D()),ox=view.cx,oy=view.cy;
+    for(const s of DUST){const cc=s.x*C[0]+s.y*C[1]+s.z*C[2];if(cc<-.1)continue;const k=2/(1+cc)*f;
+      const x=ox-k*(s.x*E[0]+s.y*E[1]+s.z*E[2]),y=oy-k*(s.x*N[0]+s.y*N[1]+s.z*N[2]);if(x<-20||y<-20||x>W+20||y>H+20)continue;
+      paths[s.b].rect(x,y,s.s,s.s)}
+    paths.forEach((p,i)=>{dx.fillStyle=DUST_FS[i];dx.fill(p)})}
+   if(a0>0){ctx.globalAlpha=a0;ctx.drawImage(dc,par.x*12,par.y*8,W,H);ctx.globalAlpha=1}}
 
-  /* 命名星官 */
-  ctx.save();skyTransform(ctx,1,ang);S.M=ctx.getTransform();
-  ctx.globalAlpha=.16*ease((it-2400)/2000);ctx.strokeStyle='#c8d6ff';ctx.lineWidth=.8;ctx.beginPath();
-  S.nlines.forEach(l=>{ctx.moveTo(l[0],l[1]);ctx.lineTo(l[2],l[3])});ctx.stroke();
-  S.named.forEach(s=>{
-    const a=ease((it-500-(s.m+1.5)*420)/1100); if(a<=0)return;
-    const tw=RM?1:.68+.32*Math.sin(t*.0016*s.sp+s.ph);
-    const r=Math.max(.7,(5.8-s.m)*.6), b=Math.min(1,(6.4-s.m)/5)*tw*a;
-    const col=s.fam==='石'?'255,212,192':'226,232,255';
-    if(s.m<2.8){const R=r*(s.m<1?9:6);const g=ctx.createRadialGradient(s.x,s.y,0,s.x,s.y,R);g.addColorStop(0,`rgba(${col},${.34*b})`);g.addColorStop(1,`rgba(${col},0)`);ctx.globalAlpha=1;ctx.fillStyle=g;ctx.beginPath();ctx.arc(s.x,s.y,R,0,7);ctx.fill();
-      if(s.m<1.2){ctx.strokeStyle=`rgba(${col},${.22*b})`;ctx.lineWidth=.7;ctx.beginPath();ctx.moveTo(s.x-R*1.3,s.y);ctx.lineTo(s.x+R*1.3,s.y);ctx.moveTo(s.x,s.y-R*1.3);ctx.lineTo(s.x,s.y+R*1.3);ctx.stroke()}}
-    ctx.globalAlpha=1;ctx.fillStyle=`rgba(${col},${b})`;ctx.beginPath();ctx.arc(s.x,s.y,r,0,7);ctx.fill();
-  });
-  ctx.restore();
+  /* 投影全部星点 */
+  const ox=view.cx+par.x*24,oy=view.cy+par.y*14;
+  for(let i=0;i<STARS.length;i++){const v=SV[i],cc=v[0]*C[0]+v[1]*C[1]+v[2]*C[2];if(cc<-.2){PV[i]=0;continue}
+    const k=2/(1+cc)*f;PX[i]=ox-k*(v[0]*E[0]+v[1]*E[1]+v[2]*E[2]);PY[i]=oy-k*(v[0]*N[0]+v[1]*N[1]+v[2]*N[2]);
+    PV[i]=PX[i]>-200&&PX[i]<W+200&&PY[i]>-200&&PY[i]<H+200?1:0}
+
+  /* 夜空中的命名星 */
+  ctx.globalAlpha=.13*ease((it-2400)/2000);ctx.strokeStyle='#c8d6ff';ctx.lineWidth=.8;ctx.beginPath();
+  NAMED_LINES.forEach(([a,b])=>{if(!PV[a]||!PV[b])return;ctx.moveTo(PX[a],PY[a]);ctx.lineTo(PX[b],PY[b])});ctx.stroke();
+  for(let i=0;i<STARS.length;i++){const s=STARS[i];if(!s.named||!PV[i])continue;
+    const a=ease((it-500-(s.m+1.5)*420)/1100);if(a<=0)continue;
+    const tw=RM?1:.72+.28*Math.sin(t*.0016*TW[i][1]+TW[i][0]);
+    const r=Math.max(.8,(5.8-s.m)*.55),b=Math.min(1,(6.4-s.m)/5)*tw*a,x=PX[i],y=PY[i];
+    const col=s.fam==='石'?'255,214,196':'226,232,255';
+    if(s.m<2.6){const R=r*(s.m<1?4.2:3.2);const g=ctx.createRadialGradient(x,y,0,x,y,R);g.addColorStop(0,`rgba(${col},${.3*b})`);g.addColorStop(1,`rgba(${col},0)`);ctx.globalAlpha=1;ctx.fillStyle=g;ctx.beginPath();ctx.arc(x,y,R,0,7);ctx.fill()}
+    ctx.globalAlpha=1;ctx.fillStyle=`rgba(${col},${b})`;ctx.beginPath();ctx.arc(x,y,r,0,7);ctx.fill()}
 
   /* 流星 */
   if(!RM&&it>4500){
-    if(t>S.nextMeteor){const a=(200+Math.random()*28)*D2R;S.meteors.push({x:W*(.35+Math.random()*.6),y:H*(.04+Math.random()*.35),a,len:120+Math.random()*170,t0:t,dur:650+Math.random()*500});S.nextMeteor=t+4500+Math.random()*7500}
+    if(t>S.nextMeteor){const a=(200+Math.random()*28)*D2R;S.meteors.push({x:W*(.35+Math.random()*.6),y:H*(.04+Math.random()*.35),a,len:110+Math.random()*150,t0:t,dur:650+Math.random()*500});S.nextMeteor=t+5000+Math.random()*8000}
     S.meteors=S.meteors.filter(m=>{const p=(t-m.t0)/m.dur;if(p>1)return false;
-      const dist=p*m.len*2.2, hx=m.x+Math.cos(m.a)*dist, hy=m.y-Math.sin(m.a)*dist, tl=m.len*Math.min(1,p*3)*(1-p*.6);
-      const tx=hx-Math.cos(m.a)*tl, ty=hy+Math.sin(m.a)*tl, al=Math.sin(Math.PI*p);
-      const g=ctx.createLinearGradient(hx,hy,tx,ty);g.addColorStop(0,`rgba(255,246,225,${.9*al})`);g.addColorStop(1,'rgba(255,246,225,0)');
-      ctx.strokeStyle=g;ctx.lineWidth=1.3;ctx.beginPath();ctx.moveTo(hx,hy);ctx.lineTo(tx,ty);ctx.stroke();return true});
-  }
+      const dist=p*m.len*2.2,hx=m.x+Math.cos(m.a)*dist,hy=m.y-Math.sin(m.a)*dist,tl=m.len*Math.min(1,p*3)*(1-p*.6);
+      const tx=hx-Math.cos(m.a)*tl,ty=hy+Math.sin(m.a)*tl,al=Math.sin(Math.PI*p);
+      const g=ctx.createLinearGradient(hx,hy,tx,ty);g.addColorStop(0,`rgba(255,246,225,${.85*al})`);g.addColorStop(1,'rgba(255,246,225,0)');
+      ctx.strokeStyle=g;ctx.lineWidth=1.2;ctx.beginPath();ctx.moveTo(hx,hy);ctx.lineTo(tx,ty);ctx.stroke();return true})}
 
-  /* 掌灯：灯光所及，星空化作写本。纸色只是一层薄光，星官以朱、墨、黄逐笔画出，离灯后仍留片刻 */
+  /* 掌灯 */
   lamp.shown+=((it>1600?1:0)-lamp.shown)*.05;
   const flick=RM?1:1+.03*Math.sin(t*.011)+.02*Math.sin(t*.027+1)+.03*(vnoise(t*.005,3.3)-.5)*2;
-  const R=lamp.r*flick*lamp.shown;
-  const lc=S.lc, l=lc.getContext('2d'), d=S.d;
-  let lsky=null;
-  if(S.M){const q=S.M.inverse().transformPoint(new DOMPoint(lamp.x*DPR,lamp.y*DPR));lsky={x:q.x,y:q.y}}
-  const cy=lamp.y-R*.05;
+  const R=lamp.r*flick*lamp.shown, cy=lamp.y-R*.05;
   if(R>2){
-    /* 暖光 */
     ctx.globalCompositeOperation='screen';
     const wg=ctx.createRadialGradient(lamp.x,cy,0,lamp.x,cy,R*1.5);wg.addColorStop(0,'rgba(255,190,110,.26)');wg.addColorStop(.35,'rgba(240,150,70,.12)');wg.addColorStop(1,'rgba(240,150,70,0)');
-    ctx.fillStyle=wg;ctx.fillRect(0,0,W,H);ctx.globalCompositeOperation='source-over';
+    const bx=Math.max(0,lamp.x-R*1.5),by=Math.max(0,cy-R*1.5),bw=Math.min(W,lamp.x+R*1.5)-bx,bh=Math.min(H,cy+R*1.5)-by;
+    ctx.fillStyle=wg;if(bw>0&&bh>0)ctx.fillRect(bx,by,bw,bh);ctx.globalCompositeOperation='source-over';
     /* 薄纸 */
-    const layer=(img,peak,soft)=>{
-      l.setTransform(1,0,0,1,0,0);l.globalCompositeOperation='source-over';l.clearRect(0,0,lc.width,lc.height);l.setTransform(d,0,0,d,0,0);
-      const mg=l.createRadialGradient(lamp.x,cy,0,lamp.x,cy,R*soft);mg.addColorStop(0,`rgba(0,0,0,${peak})`);mg.addColorStop(.45,`rgba(0,0,0,${peak*.8})`);mg.addColorStop(1,'rgba(0,0,0,0)');
-      l.fillStyle=mg;l.fillRect(0,0,W,H);l.globalCompositeOperation='source-in';
-      l.save();skyTransform(l,1,ang);l.drawImage(img,0,0,S.OW,S.OH);l.restore();
-      ctx.drawImage(lc,0,0,W,H);
-    };
-    layer(S.paper,.3,1.2);
-    layer(S.ms,1,1.05);
+    const lc=S.lc,l=lc.getContext('2d'),d=S.d;
+    const qx=Math.max(0,lamp.x-R*1.25),qy=Math.max(0,cy-R*1.25),qw=Math.min(W,lamp.x+R*1.25)-qx,qh=Math.min(H,cy+R*1.25)-qy;
+    l.setTransform(1,0,0,1,0,0);l.globalCompositeOperation='source-over';l.clearRect(0,0,lc.width,lc.height);l.setTransform(d,0,0,d,0,0);
+    const mg=l.createRadialGradient(lamp.x,cy,0,lamp.x,cy,R*1.2);mg.addColorStop(0,'rgba(0,0,0,.3)');mg.addColorStop(.45,'rgba(0,0,0,.24)');mg.addColorStop(1,'rgba(0,0,0,0)');
+    l.fillStyle=mg;if(qw>0&&qh>0)l.fillRect(qx,qy,qw,qh);l.globalCompositeOperation='source-in';
+    if(!S.pat)S.pat=l.createPattern(S.tile,'repeat');
+    try{S.pat.setTransform(new DOMMatrix().translate(-(view.ra*f*.26)%420,(view.dec*f*.0175)%420))}catch(e){}
+    l.fillStyle=S.pat;if(qw>0&&qh>0){l.fillRect(qx,qy,qw,qh);ctx.drawImage(lc,qx*d,qy*d,qw*d,qh*d,qx,qy,qw,qh)}
+    /* 灯下显出原卷的细小星点 */
+    const fall=(x,y)=>{const dd=Math.hypot(x-lamp.x,y-cy)/R;return dd>1.05?0:1-ease((dd-.45)/.6)};
+    ctx.lineCap='round';ctx.lineWidth=.9;ctx.strokeStyle='rgba(233,220,188,.45)';
+    DECO_LINES.forEach(([a,b,fm])=>{if(!PV[a]||!PV[b])return;const fa=Math.min(fall(PX[a],PY[a]),fall(PX[b],PY[b]))*famA(fm);if(fa<=0)return;
+      ctx.globalAlpha=fa;ctx.beginPath();ctx.moveTo(PX[a],PY[a]);ctx.lineTo(PX[b],PY[b]);ctx.stroke()});
+    for(let i=0;i<STARS.length;i++){const s=STARS[i];if(s.named||!PV[i])continue;const fa=fall(PX[i],PY[i]);if(fa<=0)continue;darkDot(ctx,PX[i],PY[i],2.1,s.fam,fa*famA(s.fam))}
+    ctx.globalAlpha=1;
   }
-  /* 星官：灯下逐笔画出；离灯数秒后淡去 */
-  ctx.save();skyTransform(ctx,1,ang);ctx.lineCap='round';
-  const lab=W<760?16:20;
-  S.groups.forEach(g=>{
-    let md=1e9;if(lsky&&R>2)g.pts.forEach(p=>{const dd=Math.hypot(p.x-lsky.x,p.y-lsky.y);if(dd<md)md=dd});
-    const near=md<R*.82;
-    if(near)g.hold=t;
-    const tgt=near||t-g.hold<5200?1:0;
-    g.p=RM?tgt:g.p+(tgt-g.p)*(tgt?.03:.012);
-    g.lit+=((near?1:0)-g.lit)*.06;
-    if(g.p<.01)return;
-    const fa=famA(g.fam), a=Math.min(1,g.p*1.4)*(.55+.45*g.lit);
-    ctx.lineWidth=1.25;
-    g.segs.forEach((s,i)=>{const q=ease(g.p*1.7-i*.13);if(q<=0)return;ctx.globalAlpha=fa*a;ctx.strokeStyle='rgba(240,226,190,.85)';ctx.beginPath();ctx.moveTo(s[0],s[1]);ctx.lineTo(s[0]+(s[2]-s[0])*q,s[1]+(s[3]-s[1])*q);ctx.stroke()});
-    g.pts.forEach((pt,j)=>{const q=ease(g.p*2.4-j*.07);if(q<=0)return;const r=(pt.m<1.5?3.4:2.7)*(.6+.4*q);
-      if(g.lit>.05){ctx.globalAlpha=fa*q*g.lit*.5;const gg=ctx.createRadialGradient(pt.x,pt.y,0,pt.x,pt.y,r*4);gg.addColorStop(0,g.fam==='石'?'rgba(226,88,59,.6)':'rgba(240,226,190,.4)');gg.addColorStop(1,'rgba(0,0,0,0)');ctx.fillStyle=gg;ctx.beginPath();ctx.arc(pt.x,pt.y,r*4,0,7);ctx.fill()}
-      S.dot(ctx,pt.x,pt.y,r,g.fam,fa*q*a)});
-    const la=ease((g.p-.5)*2.4);
-    if(la>0){ctx.globalAlpha=la*fa*a;ctx.fillStyle=g.lit>.5?'#f0d290':'rgba(240,226,190,.9)';ctx.font=`${g.name.length>2?lab*.8:lab}px "Ma Shan Zheng","Kaiti SC","STKaiti",serif`;ctx.textAlign='center';ctx.fillText(g.name,g.lx+(g.mansion?18:16),g.ly-13-6*(1-la))}
+
+  /* 星官：灯下逐笔画出，并在旁边题写书法说明 */
+  const placed=[], nameFS=W<760?18:24, noteFS=W<760?13:16, lab='"Ma Shan Zheng","Kaiti SC","STKaiti",serif';
+  const live=[];
+  HG.forEach(g=>{
+    let md=1e9,any=false,x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
+    g.idx.forEach(i=>{if(!PV[i])return;any=true;const x=PX[i],y=PY[i];if(x<x0)x0=x;if(x>x1)x1=x;if(y<y0)y0=y;if(y>y1)y1=y;if(R>2){const dd=Math.hypot(x-lamp.x,y-cy);if(dd<md)md=dd}});
+    const near=any&&md<R*.85;if(near)g.hold=t;
+    const tgt=near||t-g.hold<6000?1:0;
+    g.p=RM?tgt:g.p+(tgt-g.p)*(tgt?.03:.012);g.lit+=((near?1:0)-g.lit)*.06;
+    if(!any||g.p<.01){if(g.p<.01)g.place=null;return}
+    const minD=W<760?30:40, diag=Math.hypot(x1-x0,y1-y0), mx=(x0+x1)/2, my=(y0+y1)/2;
+    const sc=g.idx.length>1&&diag<minD?Math.min(3,minD/Math.max(diag,4)):1;
+    g.sx=g.idx.map(i=>mx+(PX[i]-mx)*sc);g.sy=g.idx.map(i=>my+(PY[i]-my)*sc);
+    g.bb=[mx+(x0-mx)*sc,my+(y0-my)*sc,mx+(x1-mx)*sc,my+(y1-my)*sc];live.push(g);
   });
-  ctx.restore();ctx.globalAlpha=1;ctx.textAlign='left';
+  live.sort((a,b)=>b.lit-a.lit||b.p-a.p);
+  ctx.lineCap='round';
+  live.forEach(g=>{
+    const fa=famA(g.fam),a=Math.min(1,g.p*1.4)*(.6+.4*g.lit);
+    ctx.lineWidth=1.3;ctx.strokeStyle='rgba(240,226,190,.85)';
+    const pos=new Map();g.idx.forEach((i,j)=>pos.set(i,j));
+    g.segs.forEach(([ia,ib],i)=>{if(!PV[ia]||!PV[ib])return;const q=ease(g.p*1.7-i*.13);if(q<=0)return;const A=pos.get(ia),B=pos.get(ib);
+      const ax=g.sx[A],ay=g.sy[A],bx=g.sx[B],by=g.sy[B];ctx.globalAlpha=fa*a;ctx.beginPath();ctx.moveTo(ax,ay);ctx.lineTo(ax+(bx-ax)*q,ay+(by-ay)*q);ctx.stroke()});
+    g.idx.forEach((i,j)=>{if(!PV[i])return;const q=ease(g.p*2.4-j*.07);if(q<=0)return;const m=STARS[i].m,r=(m<1.5?3.6:2.9)*(.6+.4*q),x=g.sx[j],y=g.sy[j];
+      if(g.lit>.05){ctx.globalAlpha=fa*q*g.lit*.45;const gg=ctx.createRadialGradient(x,y,0,x,y,r*3.4);gg.addColorStop(0,g.fam==='石'?'rgba(226,88,59,.6)':'rgba(240,226,190,.4)');gg.addColorStop(1,'rgba(0,0,0,0)');ctx.fillStyle=gg;ctx.beginPath();ctx.arc(x,y,r*3.4,0,7);ctx.fill()}
+      darkDot(ctx,x,y,r,g.fam,fa*q*a)});
+  });
+  /* 题记排版：竖写，右起；先放名称，再放说明；避开星线和其他题记 */
+  const pad=W<760?10:16;
+  live.forEach(g=>{
+    const la=ease((g.p-.45)*2.2);if(la<=0)return;
+    const phr=W<760&&g.lit<.3?[]:g.phr;
+    const cols=[g.name,...phr], cw0=nameFS*1.25, cw=noteFS*1.4;
+    const bw=cw0+(cols.length-1)*cw, bh=Math.max(g.name.length*nameFS*1.06,...phr.map(p=>p.length*noteFS*1.1))+4;
+    const [x0,y0,x1,y1]=g.bb, mx=(x0+x1)/2, my=(y0+y1)/2;
+    const cand=[[x1+pad,my-bh*.42],[x0-pad-bw,my-bh*.42],[x1+pad,y0-bh*.15],[x0-pad-bw,y1-bh*.85],[mx-bw/2,y1+pad],[mx-bw/2,y0-pad-bh]];
+    const hit=(rx,ry)=>{if(rx<6||ry<70||rx+bw>W-6||ry+bh>H-10)return 2;
+      for(const p of placed)if(rx<p[2]&&rx+bw>p[0]&&ry<p[3]&&ry+bh>p[1])return 1;
+      for(const o of live){if(o===g)continue;const b=o.bb;if(rx<b[2]+8&&rx+bw>b[0]-8&&ry<b[3]+8&&ry+bh>b[1]-8)return 1}return 0};
+    let ci=g.place;
+    if(ci==null||hit(cand[ci][0],cand[ci][1])){ci=null;for(let k=0;k<cand.length;k++){if(!hit(cand[k][0],cand[k][1])){ci=k;break}}
+      if(ci==null){for(let k=0;k<cand.length;k++)if(hit(cand[k][0],cand[k][1])!==2){ci=k;break}}if(ci==null)ci=0;g.place=ci}
+    const [bx,by]=cand[ci];placed.push([bx,by,bx+bw,by+bh]);
+    const fa=famA(g.fam);ctx.textAlign='center';ctx.textBaseline='top';
+    let cx=bx+bw-cw0/2;
+    ctx.globalAlpha=la*fa;ctx.fillStyle=g.lit>.5?'#f2d48e':'rgba(240,226,190,.95)';ctx.font=`${nameFS}px ${lab}`;
+    [...g.name].forEach((ch,k)=>ctx.fillText(ch,cx,by+k*nameFS*1.06));
+    cx-=cw0/2+cw/2;ctx.font=`${noteFS}px ${lab}`;
+    phr.forEach((ph,pi)=>{const pa=ease((g.p-.55-pi*.08)*2.6);if(pa<=0){cx-=cw;return}
+      ctx.globalAlpha=pa*fa*.86;ctx.fillStyle='rgba(234,222,194,1)';[...ph].forEach((ch,k)=>ctx.fillText(ch,cx,by+3+k*noteFS*1.1));cx-=cw});
+  });
+  ctx.globalAlpha=1;ctx.textAlign='left';ctx.textBaseline='alphabetic';
 
   /* 地平气辉与沙丘 */
   ctx.fillStyle=S.glow;ctx.fillRect(0,H*.6,W,H*.4);
   ctx.drawImage(S.dunes,-(S.DW-W)/2+par.x*42,H-S.DH+par.y*6+2,S.DW,S.DH);
   ctx.fillStyle=S.vig;ctx.fillRect(0,0,W,H);
-  /* 灯焰 */
-  if(R>2&&lamp.shown>.3){
-    const sway=RM?0:.07*Math.sin(t*.004)+.05*(vnoise(t*.003,8)-.5);
-    const fh=19*flick, fw=5.6;
-    ctx.save();ctx.translate(lamp.x,lamp.y+6);ctx.rotate(sway);ctx.globalAlpha=lamp.shown;
-    const hg=ctx.createRadialGradient(0,-fh*.45,0,0,-fh*.45,34);hg.addColorStop(0,'rgba(255,200,120,.32)');hg.addColorStop(1,'rgba(255,200,120,0)');
-    ctx.fillStyle=hg;ctx.beginPath();ctx.arc(0,-fh*.45,34,0,7);ctx.fill();
-    const fg=ctx.createLinearGradient(0,-fh,0,0);fg.addColorStop(0,'rgba(255,150,60,0)');fg.addColorStop(.35,'rgba(255,170,80,.85)');fg.addColorStop(.75,'rgba(255,232,180,1)');fg.addColorStop(1,'rgba(120,150,255,.7)');
+
+  /* 长信宫灯 */
+  if(R>2&&lamp.shown>.3&&FIG){
+    ctx.save();ctx.globalAlpha=lamp.shown;
+    const hg=ctx.createRadialGradient(lamp.x,lamp.y,0,lamp.x,lamp.y,26);hg.addColorStop(0,'rgba(255,214,140,.55)');hg.addColorStop(1,'rgba(255,190,110,0)');
+    ctx.fillStyle=hg;ctx.beginPath();ctx.arc(lamp.x,lamp.y,26,0,7);ctx.fill();
+    const k=FIG.k,fh=8.5*flick*k,fw=2.8*k,sw=RM?0:.08*Math.sin(t*.004)+.06*(vnoise(t*.003,8)-.5);
+    ctx.translate(lamp.x,lamp.y+5*k);ctx.rotate(sw);
+    const fg=ctx.createLinearGradient(0,-fh,0,0);fg.addColorStop(0,'rgba(255,160,70,0)');fg.addColorStop(.35,'rgba(255,180,90,.9)');fg.addColorStop(.8,'rgba(255,240,200,1)');fg.addColorStop(1,'rgba(150,170,255,.8)');
     ctx.fillStyle=fg;ctx.beginPath();ctx.moveTo(0,-fh);ctx.bezierCurveTo(fw*.6,-fh*.55,fw,-fh*.2,fw*.8,-fh*.02);ctx.bezierCurveTo(fw*.5,fh*.12,-fw*.5,fh*.12,-fw*.8,-fh*.02);ctx.bezierCurveTo(-fw,-fh*.2,-fw*.6,-fh*.55,0,-fh);ctx.fill();
-    ctx.restore();ctx.globalAlpha=1;
+    ctx.setTransform(1,0,0,1,0,0);ctx.scale(DPR,DPR);ctx.globalAlpha=lamp.shown;
+    ctx.drawImage(FIG.c,lamp.x-FIG.ox,lamp.y-FIG.oy,FIG.w,FIG.h);
+    ctx.restore();
   }
 
   /* 灯位 */
-  if(!lamp.user&&!RM){const a=(t-S.t0)*.00016;lamp.tx=W*(W<760?.5+.26*Math.sin(a*1.3):.5+.17*Math.sin(a*1.3));lamp.ty=H*(.38+.17*Math.sin(a*2.1+1))}
-  lamp.x+=(lamp.tx-lamp.x)*.1;lamp.y+=(lamp.ty-lamp.y)*.1;lamp.r+=(lamp.tr-lamp.r)*.08;
+  if(!RM&&t-lamp.last>5000&&!lamp.down){const a=(t-S.t0)*.00016;lamp.tx=W*(W<760?.5+.24*Math.sin(a*1.3):.56+.14*Math.sin(a*1.3));lamp.ty=H*(.42+.13*Math.sin(a*2.1+1))}
+  lamp.x+=(lamp.tx-lamp.x)*.14;lamp.y+=(lamp.ty-lamp.y)*.14;lamp.r+=(lamp.tr-lamp.r)*.08;
   heroEl.style.setProperty('--lx',lamp.x+'px');heroEl.style.setProperty('--ly',lamp.y+'px');heroEl.style.setProperty('--lr',lamp.r+'px');
   /* 读数 */
-  if(S.M&&(t|0)%3===0){
-    const p=S.M.inverse().transformPoint(new DOMPoint(lamp.x*DPR,lamp.y*DPR));
-    const [ra,dec]=S.inv(p.x,p.y);
-    let best=null,bd=1e9;GROUPS.forEach(g=>{const dd=angDist([ra,dec],[g.ra,g.dec]);if(dd<bd){bd=dd;best=g}});
-    const nm=bd<13?best.name:'—';if(lampName.textContent!==nm)lampName.textContent=nm;
-    lampCoord.textContent=`赤经 ${fmtRA(ra)} · 赤纬 ${dec>=0?'+':'−'}${Math.abs(dec).toFixed(0).padStart(2,'0')}°`;
-  }
+  {const v=unproj(lamp.x-par.x*24,lamp.y-par.y*14);const [ra,dec]=radec(v);
+   let best=null,bd=1e9;GROUPS.forEach(g=>{const dd=angDist([ra,dec],[g.ra,g.dec]);if(dd<bd){bd=dd;best=g}});
+   const nm=bd<12?best.name:'—';if(lampName.textContent!==nm)lampName.textContent=nm;
+   lampCoord.textContent=`赤经 ${fmtRA(ra)} · 赤纬 ${dec>=0?'+':'−'}${Math.abs(dec).toFixed(0).padStart(2,'0')}°`}
 }
-heroEl.addEventListener('pointermove',e=>{const r=heroEl.getBoundingClientRect();lamp.user=true;lamp.tx=e.clientX-r.left;lamp.ty=e.clientY-r.top;
-  par.tx=(e.clientX-r.left)/r.width*2-1;par.ty=(e.clientY-r.top)/r.height*2-1});
-heroEl.addEventListener('pointerleave',()=>{lamp.user=false;par.tx=par.ty=0});
-heroEl.addEventListener('pointerdown',()=>{lamp.tr=lampBase()*1.55});
-addEventListener('pointerup',()=>{lamp.tr=lampBase()});
+heroEl.addEventListener('pointermove',e=>{const r=heroEl.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;
+  lamp.inside=true;lamp.last=performance.now();lamp.tx=x;lamp.ty=y;
+  if(lamp.down){const dx=x-lamp.px,dy=y-lamp.py;if(Math.abs(dx)+Math.abs(dy)>0){lamp.drag=true;
+    view.ra=((view.ra+dx/view.f*(12/Math.PI)/Math.max(.3,Math.cos(view.dec*D2R)))%24+24)%24;view.dec=Math.max(-50,Math.min(84,view.dec+dy/view.f*(180/Math.PI)));
+    view.vra=view.vdec=0}lamp.px=x;lamp.py=y}
+  par.tx=x/r.width*2-1;par.ty=y/r.height*2-1});
+heroEl.addEventListener('pointerleave',()=>{lamp.inside=false;lamp.down=false;par.tx=par.ty=0});
+heroEl.addEventListener('pointerdown',e=>{const r=heroEl.getBoundingClientRect();lamp.down=true;lamp.drag=false;lamp.px=e.clientX-r.left;lamp.py=e.clientY-r.top;
+  lamp.tx=lamp.px;lamp.ty=lamp.py;lamp.inside=true;lamp.last=performance.now();lamp.tr=lampBase()*1.35});
+addEventListener('pointerup',()=>{lamp.down=false;lamp.tr=lampBase()});
+addEventListener('pointercancel',()=>{lamp.down=false;lamp.tr=lampBase()});
 document.querySelectorAll('.vtext[data-v]').forEach(el=>vert(el,el.dataset.v));
 (function(){/* 印泥不匀的遮罩 */const c=mk(124,124),x=c.getContext('2d');x.fillStyle='#000';x.fillRect(0,0,124,124);
   for(let i=0;i<260;i++){x.globalCompositeOperation='destination-out';x.fillStyle=`rgba(0,0,0,${Math.random()*.55})`;const r=Math.random()*1.8+.3;x.beginPath();x.arc(Math.random()*124,Math.random()*124,r,0,7);x.fill()}
@@ -1006,7 +1094,7 @@ function loop(t){
 }
 function resize(){lamp.tr=lamp.r=lampBase();heroBuild();buildRuler();bandFrame(true);polarDirty=true}
 addEventListener('resize',()=>{clearTimeout(resize._t);resize._t=setTimeout(resize,120)});
-lamp.x=lamp.tx=innerWidth*.5;lamp.y=lamp.ty=innerHeight*.38;
+lamp.x=lamp.tx=innerWidth*.56;lamp.y=lamp.ty=innerHeight*.42;
 resize();updateYear();drawPolar(0);heroFrame(0);
 requestAnimationFrame(loop);
 (document.fonts&&document.fonts.ready||Promise.resolve()).then(()=>{heroBuild();bandFrame(true);polarDirty=true;drawPolar(0)});
